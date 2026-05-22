@@ -1,0 +1,17 @@
+# Exclude node packages
+node_modules/
+**/node_modules/
+
+# Exclude .env files
+.env
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+# Exclude JSON packages / lock files
+package.json
+**/package.json
+package-lock.json
+**/package-lock.json
