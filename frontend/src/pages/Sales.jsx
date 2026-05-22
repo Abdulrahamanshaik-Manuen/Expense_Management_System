@@ -711,7 +711,7 @@ const Sales = () => {
                   disabled={loading}
                   className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10"
                 >
-                  {loading ? 'Compiling corporate PDF...' : 'Provision Tax Invoice'}
+                  {loading ? 'Compiling corporate PDF...' : 'Get Invoice'}
                 </button>
               </div>
             </form>
