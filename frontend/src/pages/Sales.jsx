@@ -319,7 +319,7 @@ const Sales = () => {
                         <button
                           onClick={() => {
                             setSelectedInvoiceForExport(inv);
-                            setSelectedCompanyId(companyProfiles[0]?._id || '');
+                            setSelectedCompanyId(inv.companyId?._id || inv.companyId || companyProfiles[0]?._id || '');
                             setShowExportModal(true);
                           }}
                           className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer"

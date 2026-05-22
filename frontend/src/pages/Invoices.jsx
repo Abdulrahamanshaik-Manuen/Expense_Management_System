@@ -267,17 +267,19 @@ const Invoices = () => {
 
       {/* ================= MODAL: IN-BROWSER TAX INVOICE LIVE VIEWER ================= */}
       {showPreviewModal && selectedInvoice && (() => {
-        // Resolve active company biller profile from the dropdown choice
-        const activeBiller = companyProfiles.find(c => c._id === selectedCompanyId) || companyProfiles[0] || {
-          companyName: 'SYSTEM DEFAULT BILLER',
-          gstNumber: 'N/A',
-          companyEmail: 'billing@biller.com',
-          companyPhone: 'N/A',
-          companyAddress: 'Registered Business Address',
-          bankName: 'N/A',
-          bankAccountNumber: 'N/A',
-          ifscCode: 'N/A'
-        };
+        // Resolve active company biller profile from the invoice's saved company details
+        const activeBiller = (selectedInvoice.companyId && typeof selectedInvoice.companyId === 'object' && selectedInvoice.companyId.companyName)
+          ? selectedInvoice.companyId
+          : companyProfiles.find(c => c._id === selectedCompanyId) || companyProfiles[0] || {
+            companyName: 'SYSTEM DEFAULT BILLER',
+            gstNumber: 'N/A',
+            companyEmail: 'billing@biller.com',
+            companyPhone: 'N/A',
+            companyAddress: 'Registered Business Address',
+            bankName: 'N/A',
+            bankAccountNumber: 'N/A',
+            ifscCode: 'N/A'
+          };
 
         // Self-heal and normalize line items: support both SaleInvoice and standard Invoice
         const itemsList = (selectedInvoice.items || []).map((item) => {
@@ -316,7 +318,7 @@ const Invoices = () => {
                 <X size={20} />
               </button>
 
-              {/* Title & Biller Selector Header */}
+              {/* Title & Biller Header (Selector Removed) */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-200">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -327,25 +329,6 @@ const Invoices = () => {
                     <FileText size={20} className="text-blue-500" />
                     Tax Invoice Preview
                   </h3>
-                </div>
-
-                <div className="flex items-center gap-2.5 self-start md:self-center bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider whitespace-nowrap">Biller Company Profile:</label>
-                  <select
-                    value={selectedCompanyId}
-                    onChange={(e) => setSelectedCompanyId(e.target.value)}
-                    className="bg-transparent border-none text-xs text-slate-800 font-bold focus:outline-none cursor-pointer pr-1"
-                  >
-                    {companyProfiles.length === 0 ? (
-                      <option value="" className="bg-white text-slate-800">SYSTEM DEFAULT</option>
-                    ) : (
-                      companyProfiles.map((p) => (
-                        <option key={p._id} value={p._id} className="bg-white text-slate-800 font-bold">
-                          {p.companyName}
-                        </option>
-                      ))
-                    )}
-                  </select>
                 </div>
               </div>
 
@@ -359,14 +342,14 @@ const Invoices = () => {
                     {activeBiller.logoSquareUrl ? (
                       <div className="flex items-center gap-3">
                         <img 
-                          src={activeBiller.logoSquareUrl} 
+                          src={activeBiller.logoSquareUrl.startsWith('http') ? activeBiller.logoSquareUrl : `http://localhost:5000${activeBiller.logoSquareUrl}`} 
                           alt="Company Logo" 
                           className="w-10 h-10 object-contain"
                           onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         {activeBiller.logoUrl ? (
                           <img 
-                            src={activeBiller.logoUrl} 
+                            src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                             alt="Brand Logo" 
                             className="h-10 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
@@ -377,7 +360,7 @@ const Invoices = () => {
                       </div>
                     ) : activeBiller.logoUrl ? (
                       <img 
-                        src={activeBiller.logoUrl} 
+                        src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                         alt="Brand Logo" 
                         className="h-10 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
