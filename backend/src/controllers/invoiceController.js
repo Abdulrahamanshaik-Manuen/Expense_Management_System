@@ -59,12 +59,14 @@ export const createInvoice = asyncHandler(async (req, res) => {
   }
 
   // Generate invoice number
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const currentYear = new Date().getFullYear();
+  const prefix = `MIT${currentYear}`;
   const count = await SaleInvoice.countDocuments({
-    invoiceNumber: new RegExp(`^INV-${dateStr}`),
+    invoiceNumber: new RegExp(`^${prefix}`),
   });
   const sequentialNum = String(count + 1).padStart(3, '0');
-  const invoiceNumber = `INV-${dateStr}-${sequentialNum}`;
+  const invoiceNumber = `${prefix}${sequentialNum}`;
+
 
   const invoice = new SaleInvoice({
     invoiceNumber,

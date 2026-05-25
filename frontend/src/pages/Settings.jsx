@@ -30,7 +30,8 @@ const Settings = () => {
     defaultHsnCode: '',
     noteText: '',
     logoUrl: '',
-    logoSquareUrl: ''
+    logoSquareUrl: '',
+    currency: 'INR'
   });
 
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -143,7 +144,8 @@ const Settings = () => {
       defaultHsnCode: '998361',
       noteText: 'Please send payment within 30 days of receiving this invoice.',
       logoUrl: '',
-      logoSquareUrl: ''
+      logoSquareUrl: '',
+      currency: 'INR'
     });
   };
 
@@ -310,8 +312,8 @@ const Settings = () => {
               
               <form onSubmit={handleSubmit} className="space-y-5">
                 
-                {/* Row 1: Company Name & HSN */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Row 1: Company Name, HSN & Currency */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Company Name</label>
                     <input
@@ -335,6 +337,18 @@ const Settings = () => {
                       placeholder="e.g. 998361"
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-400"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">System Currency</label>
+                    <select
+                      name="currency"
+                      value={selectedProfile.currency || 'INR'}
+                      onChange={handleChange}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                    >
+                      <option value="INR">INR (₹) - Indian Rupees</option>
+                      <option value="USD">USD ($) - US Dollars</option>
+                    </select>
                   </div>
                 </div>
 

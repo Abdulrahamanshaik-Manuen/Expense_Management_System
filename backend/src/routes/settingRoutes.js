@@ -46,6 +46,7 @@ router.post(
       ifscCode,
       defaultHsnCode,
       noteText,
+      currency,
     } = req.body;
 
     const settings = new CompanySetting({
@@ -60,6 +61,7 @@ router.post(
       ifscCode: ifscCode || 'Kothapet & HDFC0004266',
       defaultHsnCode: defaultHsnCode || '998361',
       noteText: noteText || 'Please send payment within 30 days of receiving this invoice.',
+      currency: currency || 'INR',
     });
 
     if (req.files) {
@@ -105,6 +107,7 @@ router.put(
       ifscCode,
       defaultHsnCode,
       noteText,
+      currency,
     } = req.body;
 
     if (companyName !== undefined) settings.companyName = companyName;
@@ -118,6 +121,7 @@ router.put(
     if (ifscCode !== undefined) settings.ifscCode = ifscCode;
     if (defaultHsnCode !== undefined) settings.defaultHsnCode = defaultHsnCode;
     if (noteText !== undefined) settings.noteText = noteText;
+    if (currency !== undefined) settings.currency = currency;
 
     if (req.files) {
       if (req.files['logo'] && req.files['logo'][0]) {

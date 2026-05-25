@@ -9,7 +9,9 @@ import {
   UploadCloud,
   Tag,
   Eye,
-  X
+  X,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 
 /** Indian Currency Number-to-Words */
@@ -39,6 +41,45 @@ const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
   const [companyProfiles, setCompanyProfiles] = useState([]);
+
+  // Filter States
+  const [filterMonth, setFilterMonth] = useState('All');
+  const [filterYear, setFilterYear] = useState('All');
+
+  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+
+  const filteredExpenses = expenses.filter(exp => {
+    const expDate = new Date(exp.date);
+    const matchMonth = filterMonth === 'All' || (expDate.getMonth() + 1) === parseInt(filterMonth);
+    const matchYear = filterYear === 'All' || expDate.getFullYear() === parseInt(filterYear);
+    return matchMonth && matchYear;
+  });
+
+  const downloadCSVReport = () => {
+    const headers = ['Date', 'Title', 'Category', 'Amount', 'Currency', 'Payment Method', 'Paid To', 'Payment Status', 'Notes'];
+    const rows = filteredExpenses.map(exp => [
+      new Date(exp.date).toLocaleDateString(),
+      exp.title,
+      exp.category?.name || 'Uncategorized',
+      exp.amount,
+      activeCurrency,
+      exp.paymentMethod,
+      exp.paidTo,
+      exp.paymentStatus,
+      exp.notes || ''
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Expenses_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Modals / Form toggles
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -271,29 +312,80 @@ const Expenses = () => {
 
       {activeTab === 'entries' ? (
         /* ================= EXPENSE ENTRIES DISPLAY GRID ================= */
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                  <th className="px-6 py-4">Expense Details</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Financials</th>
-                  <th className="px-6 py-4">Payment Status</th>
-                  <th className="px-6 py-4">Receipt</th>
-                  <th className="px-6 py-4">Verification Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
-                {expenses.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-12 text-slate-400 font-medium">
-                      No expense records mapped in logs yet.
-                    </td>
+        <>
+          {/* Reports & Filtering Toolbar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Month Filter</span>
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-xs rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[140px]"
+                >
+                  <option value="All">All Months</option>
+                  <option value="1">January</option>
+                  <option value="2">February</option>
+                  <option value="3">March</option>
+                  <option value="4">April</option>
+                  <option value="5">May</option>
+                  <option value="6">June</option>
+                  <option value="7">July</option>
+                  <option value="8">August</option>
+                  <option value="9">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Year Filter</span>
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-xs rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[110px]"
+                >
+                  <option value="All">All Years</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={downloadCSVReport}
+              className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-500/10 hover:-translate-y-0.5 transition-all self-end md:self-center"
+            >
+              <FileSpreadsheet size={14} />
+              Download CSV Report
+            </button>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    <th className="px-6 py-4">Expense Details</th>
+                    <th className="px-6 py-4">Category</th>
+                    <th className="px-6 py-4">Financials</th>
+                    <th className="px-6 py-4">Payment Status</th>
+                    <th className="px-6 py-4">Receipt</th>
+                    <th className="px-6 py-4">Verification Actions</th>
                   </tr>
-                ) : (
-                  expenses.map((exp) => (
-                    <tr key={exp._id} className="hover:bg-slate-50 transition-colors">
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm">
+                  {filteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-12 text-slate-400 font-medium">
+                        No expense records matching the selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredExpenses.map((exp) => (
+                      <tr key={exp._id} className="hover:bg-slate-50 transition-colors">
                       {/* Details */}
                       <td className="px-6 py-4">
                         <p className="font-semibold text-slate-800 leading-tight">{exp.title}</p>
@@ -313,7 +405,7 @@ const Expenses = () => {
 
                       {/* Financials */}
                       <td className="px-6 py-4">
-                        <p className="font-extrabold text-slate-900">${exp.amount.toFixed(2)}</p>
+                        <p className="font-extrabold text-slate-900">{currencySymbol}{exp.amount.toFixed(2)}</p>
                         <p className="text-[10px] text-slate-500 mt-0.5">Via {exp.paymentMethod} to {exp.paidTo}</p>
                       </td>
 
@@ -384,7 +476,8 @@ const Expenses = () => {
             </table>
           </div>
         </div>
-      ) : (
+      </>
+    ) : (
         /* ================= CATEGORIES MANAGER VIEW (ADMIN ONLY) ================= */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Create Category form */}
@@ -451,48 +544,54 @@ const Expenses = () => {
 
       {/* ================= DYNAMIC LOGGING EXPENSE MODAL ================= */}
       {showAddExpense && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-          <div className="w-full max-w-xl bg-white border border-slate-200 rounded-3xl p-8 max-h-[90vh] overflow-y-auto shadow-2xl relative">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-black text-slate-900">Add Expense</h3>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <form
+            onSubmit={handleExpenseSubmit}
+            className="w-full max-w-xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+              <h3 className="text-base font-bold text-slate-900">Add Expense</h3>
               <button
+                type="button"
                 onClick={() => setShowAddExpense(false)}
-                className="text-slate-500 hover:text-slate-800 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            {errorMsg && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold">
-                {errorMsg}
-              </div>
-            )}
+            {/* Scrollable Form Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
+              {errorMsg && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold">
+                  {errorMsg}
+                </div>
+              )}
 
-            <form onSubmit={handleExpenseSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Expense Title</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Expense Title</label>
                   <input
                     type="text"
                     name="title"
                     required
                     value={expenseForm.title}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="e.g. Internet Broadband May"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Operational Cost ($)</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Operational Cost ({currencySymbol})</label>
                   <input
                     type="number"
                     name="amount"
                     required
                     value={expenseForm.amount}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="0.00"
                   />
                 </div>
@@ -500,13 +599,13 @@ const Expenses = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Select Category</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Select Category</label>
                   <select
                     name="category"
                     required
                     value={expenseForm.category}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
                   >
                     {categories.map((cat) => (
                       <option key={cat._id} value={cat._id}>{cat.name}</option>
@@ -515,26 +614,26 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Expenditure Date</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Expenditure Date</label>
                   <input
                     type="date"
                     name="date"
                     required
                     value={expenseForm.date}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Type Method</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Payment Type Method</label>
                   <select
                     name="paymentMethod"
                     value={expenseForm.paymentMethod}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
                   >
                     <option value="Cash">Cash</option>
                     <option value="Card">Card</option>
@@ -545,14 +644,14 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Paid Out To</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Paid Out To</label>
                   <input
                     type="text"
                     name="paidTo"
                     required
                     value={expenseForm.paidTo}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="e.g. Jio Fibres Co."
                   />
                 </div>
@@ -560,16 +659,16 @@ const Expenses = () => {
 
               {/* Receipt File upload drop box */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Bill Invoice Receipt File</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Bill Invoice Receipt File</label>
                 <div
                   onClick={() => fileInputRef.current.click()}
-                  className="w-full bg-slate-50 border border-dashed border-slate-200 hover:border-blue-500 hover:bg-slate-100/50 rounded-xl py-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
+                  className="w-full bg-slate-50 border border-dashed border-slate-200 hover:border-blue-500 hover:bg-slate-100/50 rounded-xl py-4 flex items-center justify-center gap-3 cursor-pointer transition-colors"
                 >
-                  <UploadCloud className="text-slate-400 group-hover:text-blue-500" size={32} />
+                  <UploadCloud className="text-slate-400 group-hover:text-blue-500" size={18} />
                   <span className="text-xs font-semibold text-slate-600">
                     {receiptFile ? receiptFile.name : 'Click to select supporting document'}
                   </span>
-                  <span className="text-[10px] text-slate-450">Supports PDF, JPG, PNG (Max 5MB)</span>
+                  <span className="text-[10px] text-slate-400">(PDF, JPG, PNG - Max 5MB)</span>
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -581,13 +680,13 @@ const Expenses = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Company Profile</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
                 <select
                   name="companyId"
                   required
                   value={expenseForm.companyId}
                   onChange={handleExpenseChange}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                  className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
                 >
                   {companyProfiles.map((profile) => (
                     <option key={profile._id} value={profile._id}>{profile.companyName}</option>
@@ -597,12 +696,12 @@ const Expenses = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Direct Payment Status</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Direct Payment Status</label>
                   <select
                     name="paymentStatus"
                     value={expenseForm.paymentStatus}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
                   >
                     <option value="Pending">Pending (Log as bill due)</option>
                     <option value="Paid">Paid (Cash logged payout)</option>
@@ -610,36 +709,38 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Custom Context Notes</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Custom Context Notes</label>
                   <input
                     type="text"
                     name="notes"
                     value={expenseForm.notes}
                     onChange={handleExpenseChange}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="e.g. Approved monthly recurring"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-250">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpense(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer transition-colors shadow-lg shadow-blue-500/10"
-                >
-                  {loading ? 'Submitting Registry...' : 'Provision Log'}
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowAddExpense(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-colors"
+              >
+                {loading ? 'Submitting Registry...' : 'Provision Log'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

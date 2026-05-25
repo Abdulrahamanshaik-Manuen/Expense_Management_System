@@ -14,7 +14,8 @@ import {
   Loader2,
   Eye,
   X,
-  AlertTriangle
+  AlertTriangle,
+  FileSpreadsheet
 } from 'lucide-react';
 
 
@@ -95,30 +96,116 @@ const Invoices = () => {
     }
   };
 
-  const filteredInvoices = invoices.filter(inv => 
-    (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (inv.customerCompany && inv.customerCompany.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Filter States
+  const [filterMonth, setFilterMonth] = useState('All');
+  const [filterYear, setFilterYear] = useState('All');
+
+  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+
+  const filteredInvoices = invoices.filter(inv => {
+    const invDate = new Date(inv.invoiceDate || inv.date || inv.createdAt);
+    const matchSearch = 
+      (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (inv.customerCompany && inv.customerCompany.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchMonth = filterMonth === 'All' || (invDate.getMonth() + 1) === parseInt(filterMonth);
+    const matchYear = filterYear === 'All' || invDate.getFullYear() === parseInt(filterYear);
+    
+    return matchSearch && matchMonth && matchYear;
+  });
+
+  const downloadCSVReport = () => {
+    const headers = ['Invoice Number', 'Date', 'Customer Name', 'Customer Email', 'Customer Company', 'Subtotal', 'Tax Amount', 'Total Amount', 'Currency', 'Amount Paid', 'Amount Due', 'Payment Status'];
+    const rows = filteredInvoices.map(inv => [
+      inv.invoiceNumber,
+      new Date(inv.invoiceDate || inv.date || inv.createdAt).toLocaleDateString(),
+      inv.customerName,
+      inv.customerEmail,
+      inv.customerCompany || '',
+      (inv.totalAmount - inv.taxAmount).toFixed(2),
+      inv.taxAmount.toFixed(2),
+      inv.totalAmount.toFixed(2),
+      activeCurrency,
+      inv.amountPaid.toFixed(2),
+      inv.amountDue.toFixed(2),
+      inv.paymentStatus
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Invoices_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)] select-none">
       
       {/* Page Header Area */}
-      <div className="flex flex-col md:flex-row md:items-center justify-start gap-4 mb-8 border-b border-slate-200 pb-6">
-        {/* Search Input Bar */}
-        <div className="relative w-full md:w-80">
-          <span className="absolute left-3.5 top-3 text-slate-400">
-            <Search size={16} />
-          </span>
-          <input
-            type="text"
-            placeholder="Search by invoice #, client or company..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
-          />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-slate-200 pb-6">
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          {/* Search Input Bar */}
+          <div className="relative w-full md:w-80">
+            <span className="absolute left-3.5 top-3 text-slate-400">
+              <Search size={16} />
+            </span>
+            <input
+              type="text"
+              placeholder="Search by invoice #, client or company..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
+            />
+          </div>
+
+          {/* Month & Year Selection dropdowns */}
+          <div className="flex items-center gap-3">
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="bg-white border border-slate-200 text-xs rounded-xl px-3 py-2.5 text-slate-850 focus:outline-none focus:border-blue-500 cursor-pointer min-w-36 shadow-sm"
+            >
+              <option value="All">All Months</option>
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+              className="bg-white border border-slate-200 text-xs rounded-xl px-3 py-2.5 text-slate-855 focus:outline-none focus:border-blue-500 cursor-pointer min-w-28 shadow-sm"
+            >
+              <option value="All">All Years</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
         </div>
+
+        <button
+          onClick={downloadCSVReport}
+          className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-500/10 hover:-translate-y-0.5 transition-all w-full md:w-auto animate-duration-200"
+        >
+          <FileSpreadsheet size={14} />
+          Download CSV Report
+        </button>
       </div>
 
       {error && (
@@ -188,7 +275,7 @@ const Invoices = () => {
                         </td>
                         <td className="px-6 py-4">
                           <p className="font-black text-slate-800 tracking-wide">
-                            ${(inv.totalAmount || inv.total || 0).toLocaleString()}
+                            {currencySymbol}{(inv.totalAmount || inv.total || 0).toLocaleString()}
                           </p>
                           <p className="text-[10px] text-slate-500 mt-0.5">
                             GST (18% included)
@@ -207,7 +294,7 @@ const Invoices = () => {
                           </span>
                           {inv.amountDue > 0 && (
                             <p className="text-[10px] text-slate-500 mt-1">
-                              Due: <span className="text-red-500 font-semibold">${inv.amountDue.toLocaleString()}</span>
+                              Due: <span className="text-red-500 font-semibold">{currencySymbol}{inv.amountDue.toLocaleString()}</span>
                             </p>
                           )}
                         </td>

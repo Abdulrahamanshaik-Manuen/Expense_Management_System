@@ -65,6 +65,11 @@ const companySettingSchema = new mongoose.Schema(
       required: true,
       default: 'Please send payment within 30 days of receiving this invoice. There will be 10% interest charge per month on late invoice.',
     },
+    currency: {
+      type: String,
+      enum: ['INR', 'USD'],
+      default: 'INR',
+    },
   },
   {
     timestamps: true,

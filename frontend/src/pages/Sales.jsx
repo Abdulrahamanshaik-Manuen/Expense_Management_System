@@ -14,10 +14,9 @@ import {
   Loader2,
   Download,
   X,
-  Eye
+  Eye,
+  FileSpreadsheet
 } from 'lucide-react';
-
-
 
 /** Indian Currency Number-to-Words */
 function priceToWords(price) {
@@ -49,6 +48,48 @@ const Sales = () => {
   const [invoices, setInvoices] = useState([]);
   const [products, setProducts] = useState([]);
   const [companyProfiles, setCompanyProfiles] = useState([]);
+
+  // Filter States
+  const [filterMonth, setFilterMonth] = useState('All');
+  const [filterYear, setFilterYear] = useState('All');
+
+  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+
+  const filteredInvoices = invoices.filter(inv => {
+    const invDate = new Date(inv.invoiceDate || inv.createdAt);
+    const matchMonth = filterMonth === 'All' || (invDate.getMonth() + 1) === parseInt(filterMonth);
+    const matchYear = filterYear === 'All' || invDate.getFullYear() === parseInt(filterYear);
+    return matchMonth && matchYear;
+  });
+
+  const downloadCSVReport = () => {
+    const headers = ['Invoice Number', 'Date', 'Customer Name', 'Customer Email', 'Customer Company', 'Subtotal', 'Tax Amount', 'Total Amount', 'Currency', 'Amount Paid', 'Amount Due', 'Payment Status'];
+    const rows = filteredInvoices.map(inv => [
+      inv.invoiceNumber,
+      new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString(),
+      inv.customerName,
+      inv.customerEmail,
+      inv.customerCompany || '',
+      (inv.totalAmount - inv.taxAmount).toFixed(2),
+      inv.taxAmount.toFixed(2),
+      inv.totalAmount.toFixed(2),
+      activeCurrency,
+      inv.amountPaid.toFixed(2),
+      inv.amountDue.toFixed(2),
+      inv.paymentStatus
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Sales_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Modals / Toggles
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -289,28 +330,79 @@ const Sales = () => {
 
       {/* ================= TAB 1: INVOICES REGISTRY ================= */}
       {!loading && activeTab === 'invoices' && (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                  <th className="px-6 py-4">Invoice details</th>
-                  <th className="px-6 py-4">Client Contact</th>
-                  <th className="px-6 py-4">Total & Tax</th>
-                  <th className="px-6 py-4">Balances Dues</th>
-                  <th className="px-6 py-4">Invoice PDF & Actions</th>
-                  <th className="px-6 py-4">Record Receipt</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
-                {invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-12 text-slate-500 font-medium">
-                      No tax invoices logged in system yet.
-                    </td>
+        <>
+          {/* Reports & Filtering Toolbar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Month Filter</span>
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-xs rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[140px]"
+                >
+                  <option value="All">All Months</option>
+                  <option value="1">January</option>
+                  <option value="2">February</option>
+                  <option value="3">March</option>
+                  <option value="4">April</option>
+                  <option value="5">May</option>
+                  <option value="6">June</option>
+                  <option value="7">July</option>
+                  <option value="8">August</option>
+                  <option value="9">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Year Filter</span>
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-xs rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer min-w-[110px]"
+                >
+                  <option value="All">All Years</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={downloadCSVReport}
+              className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-500/10 hover:-translate-y-0.5 transition-all self-end md:self-center"
+            >
+              <FileSpreadsheet size={14} />
+              Download CSV Report
+            </button>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    <th className="px-6 py-4">Invoice details</th>
+                    <th className="px-6 py-4">Client Contact</th>
+                    <th className="px-6 py-4">Total & Tax</th>
+                    <th className="px-6 py-4">Balances Dues</th>
+                    <th className="px-6 py-4">Invoice PDF & Actions</th>
+                    <th className="px-6 py-4">Record Receipt</th>
                   </tr>
-                ) : (
-                  invoices.map((inv) => (
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-sm">
+                  {filteredInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-12 text-slate-500 font-medium">
+                        No invoices found matching the selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredInvoices.map((inv) => (
                     <tr key={inv._id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-6 py-4">
                         <p className="font-bold text-slate-800">{inv.invoiceNumber}</p>
@@ -325,12 +417,12 @@ const Sales = () => {
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="font-extrabold text-slate-800">${inv.totalAmount.toLocaleString()}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Tax (GST): ${inv.taxAmount.toLocaleString()}</p>
+                        <p className="font-extrabold text-slate-800">{currencySymbol}{inv.totalAmount.toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Tax (GST): {currencySymbol}{inv.taxAmount.toLocaleString()}</p>
                       </td>
                       <td className="px-6 py-4">
                         <p className={`font-extrabold ${inv.amountDue > 0 ? 'text-red-650' : 'text-emerald-600'}`}>
-                          ${inv.amountDue.toLocaleString()}
+                          {currencySymbol}{inv.amountDue.toLocaleString()}
                         </p>
                         <p className="text-[10px] text-slate-500 mt-0.5">
                           Status:
@@ -397,7 +489,8 @@ const Sales = () => {
             </table>
           </div>
         </div>
-      )}
+      </>
+    )}
 
       {/* ================= TAB 2: SERVICE CATALOGUE ================= */}
       {!loading && activeTab === 'products' && (
@@ -421,7 +514,7 @@ const Sales = () => {
                   </p>
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
-                  <span className="text-lg font-black text-slate-900">${prod.price.toLocaleString()}</span>
+                  <span className="text-lg font-black text-slate-900">{currencySymbol}{prod.price.toLocaleString()}</span>
                   {user.role === 'admin' && (
                     <button
                       onClick={() => handleDeleteProduct(prod._id)}
@@ -435,34 +528,47 @@ const Sales = () => {
             ))
           )}
         </div>
-      )}      {/* ================= MODAL: ADD PRODUCT ================= */}
+      )}
+      {/* ================= MODAL: ADD PRODUCT ================= */}
       {showAddProduct && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-black text-slate-900">Register Catalog Service</h3>
-              <button onClick={() => setShowAddProduct(false)} className="text-slate-500 hover:text-slate-800 cursor-pointer">✕</button>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <form
+            onSubmit={handleProductSubmit}
+            className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+              <h3 className="text-base font-bold text-slate-900">Register Catalog Service</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddProduct(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
             </div>
-            <form onSubmit={handleProductSubmit} className="space-y-4">
+
+            {/* Scrollable Form Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
               <div>
-                <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2">Service Name</label>
+                <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Service Name</label>
                 <input
                   type="text"
                   required
                   value={prodForm.name}
                   onChange={(e) => setProdForm({ ...prodForm, name: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                   placeholder="e.g. Standard Website Package"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2">Category</label>
+                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Category</label>
                   <select
                     value={prodForm.category}
                     onChange={(e) => setProdForm({ ...prodForm, category: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="Website Development">Website Development</option>
                     <option value="Mobile App Development">Mobile App Development</option>
@@ -474,70 +580,83 @@ const Sales = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2">Base Pricing ($)</label>
+                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Base Pricing ($)</label>
                   <input
                     type="number"
                     required
                     value={prodForm.price}
                     onChange={(e) => setProdForm({ ...prodForm, price: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500"
+                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="0.00"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2">Description Detail</label>
+                <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Description Detail</label>
                 <textarea
                   value={prodForm.description}
                   onChange={(e) => setProdForm({ ...prodForm, description: e.target.value })}
                   rows="3"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors"
                   placeholder="Specs, frameworks, deliverables..."
                 ></textarea>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowAddProduct(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10"
-                >
-                  Register Package
-                </button>
-              </div>
-            </form>
-          </div>
+            {/* Sticky Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowAddProduct(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-colors"
+              >
+                Register Package
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
       {/* ================= MODAL: ADD SALES TAX INVOICE ================= */}
       {showAddInvoice && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto animate-fade-in">
-          <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-3xl p-8 shadow-2xl my-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-black text-slate-900">Draw Tax Sale Invoice</h3>
-              <button onClick={() => setShowAddInvoice(false)} className="text-slate-555 hover:text-slate-800 cursor-pointer">✕</button>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <form
+            onSubmit={handleInvoiceSubmit}
+            className="w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+              <h3 className="text-base font-bold text-slate-900">Draw Tax Sale Invoice</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddInvoice(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
             </div>
-            <form onSubmit={handleInvoiceSubmit} className="space-y-4">
 
+            {/* Scrollable Form Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
+              
               {/* Billing Company Selector */}
-              <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl space-y-3">
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5">
                 <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                   <Briefcase size={12} className="text-blue-500" /> Billing Company Setting Profile
                 </h4>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-550 mb-1">Select Billing Profile</label>
+                  <label className="block text-[10px] font-semibold text-slate-650 mb-1">Select Billing Profile</label>
                   <select
                     value={invoiceForm.companyId}
                     onChange={(e) => setInvoiceForm({ ...invoiceForm, companyId: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer h-9"
                   >
                     {companyProfiles.map((p) => (
                       <option key={p._id} value={p._id}>
@@ -549,7 +668,7 @@ const Sales = () => {
               </div>
 
               {/* Client Inline Info Section */}
-              <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl space-y-4">
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
                 <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                   <User size={12} className="text-blue-500" /> Client Billing Inline Details
                 </h4>
@@ -562,7 +681,7 @@ const Sales = () => {
                       required
                       value={invoiceForm.customerName}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, customerName: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                       placeholder="e.g. John Doe"
                     />
                   </div>
@@ -573,7 +692,7 @@ const Sales = () => {
                       required
                       value={invoiceForm.customerEmail}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, customerEmail: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                       placeholder="john@doecompany.com"
                     />
                   </div>
@@ -583,7 +702,7 @@ const Sales = () => {
                       type="text"
                       value={invoiceForm.customerPhone}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, customerPhone: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                       placeholder="+91..."
                     />
                   </div>
@@ -596,7 +715,7 @@ const Sales = () => {
                       type="text"
                       value={invoiceForm.customerCompany}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, customerCompany: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                       placeholder="Doe Tech Solutions"
                     />
                   </div>
@@ -606,7 +725,7 @@ const Sales = () => {
                       type="text"
                       value={invoiceForm.customerGst}
                       onChange={(e) => setInvoiceForm({ ...invoiceForm, customerGst: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                       placeholder="07AAAAA1111A1Z1"
                     />
                   </div>
@@ -618,14 +737,14 @@ const Sales = () => {
                     type="text"
                     value={invoiceForm.customerAddress}
                     onChange={(e) => setInvoiceForm({ ...invoiceForm, customerAddress: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                     placeholder="Physical workplace location address..."
                   />
                 </div>
               </div>
 
               {/* Invoice Items builder */}
-              <div className="space-y-4">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                     <ShoppingBag size={12} className="text-emerald-500" /> Billed Products Lists
@@ -633,129 +752,154 @@ const Sales = () => {
                   <button
                     type="button"
                     onClick={addInvoiceItem}
-                    className="text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer"
+                    className="text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer transition-colors"
                   >
                     + Add Item Row
                   </button>
                 </div>
 
-                {invoiceForm.items.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 border border-slate-200 p-4 rounded-xl relative">
-                    <div className="md:col-span-4">
-                      <label className="block text-[9px] text-slate-500 mb-1">Catalogue Auto-fill</label>
-                      <select
-                        onChange={(e) => selectCatalogProduct(index, e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-700 focus:outline-none cursor-pointer"
-                      >
-                        <option value="">-- Auto fill --</option>
-                        {products.map(p => (
-                          <option key={p._id} value={p._id}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                {invoiceForm.items.length > 0 && (
+                  <div className="hidden md:grid grid-cols-12 gap-3 px-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="col-span-3">Catalogue Auto-fill</div>
+                    <div className="col-span-3">Item Title / Detail</div>
+                    <div className="col-span-1 text-center">Qty</div>
+                    <div className="col-span-2">Price ({currencySymbol})</div>
+                    <div className="col-span-1">Disc ({currencySymbol})</div>
+                    <div className="col-span-2">GST %</div>
+                  </div>
+                )}
 
-                    <div className="md:col-span-4">
-                      <label className="block text-[9px] text-slate-500 mb-1">Item Title / Detail</label>
-                      <input
-                        type="text"
-                        required
-                        value={item.name}
-                        onChange={(e) => updateInvoiceItem(index, 'name', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        placeholder="Item Title"
-                      />
-                    </div>
+                <div className="space-y-2">
+                  {invoiceForm.items.map((item, index) => (
+                    <div key={index} className="flex flex-col md:grid md:grid-cols-12 gap-3 bg-slate-50 border border-slate-200 p-2.5 rounded-xl relative items-center">
+                      
+                      {/* Catalogue Auto-fill */}
+                      <div className="col-span-3 w-full">
+                        <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Catalogue Auto-fill</label>
+                        <select
+                          onChange={(e) => selectCatalogProduct(index, e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer h-9"
+                        >
+                          <option value="">-- Auto fill --</option>
+                          {products.map(p => (
+                            <option key={p._id} value={p._id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
 
-                    <div className="md:col-span-1">
-                      <label className="block text-[9px] text-slate-500 mb-1">Qty</label>
-                      <input
-                        type="number"
-                        required
-                        value={item.quantity}
-                        onChange={(e) => updateInvoiceItem(index, 'quantity', Number(e.target.value))}
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div className="md:col-span-1">
-                      <label className="block text-[9px] text-slate-500 mb-1">Price</label>
-                      <input
-                        type="number"
-                        required
-                        value={item.price}
-                        onChange={(e) => updateInvoiceItem(index, 'price', Number(e.target.value))}
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        placeholder="Price"
-                      />
-                    </div>
-
-                    <div className="md:col-span-1">
-                      <label className="block text-[9px] text-slate-500 mb-1">Disc</label>
-                      <input
-                        type="number"
-                        value={item.discount}
-                        onChange={(e) => updateInvoiceItem(index, 'discount', Number(e.target.value))}
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        placeholder="Disc $"
-                      />
-                    </div>
-
-                    <div className="md:col-span-1 flex items-center justify-between gap-1.5">
-                      <div>
-                        <label className="block text-[9px] text-slate-500 mb-1">GST %</label>
+                      {/* Item Title / Detail */}
+                      <div className="col-span-3 w-full">
+                        <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Item Title / Detail</label>
                         <input
-                          type="number"
-                          value={item.taxRate}
-                          onChange={(e) => updateInvoiceItem(index, 'taxRate', Number(e.target.value))}
-                          className="w-10 bg-white border border-slate-200 rounded px-1 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          type="text"
+                          required
+                          value={item.name}
+                          onChange={(e) => updateInvoiceItem(index, 'name', e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
+                          placeholder="Item Title"
                         />
                       </div>
-                      {invoiceForm.items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeInvoiceItem(index)}
-                          className="text-red-500 hover:text-red-700 font-semibold cursor-pointer mt-4"
-                        >
-                          ✕
-                        </button>
-                      )}
+
+                      {/* Qty */}
+                      <div className="col-span-1 w-full">
+                        <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Qty</label>
+                        <input
+                          type="number"
+                          required
+                          value={item.quantity}
+                          onChange={(e) => updateInvoiceItem(index, 'quantity', Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9 text-center"
+                        />
+                      </div>
+
+                      {/* Price */}
+                      <div className="col-span-2 w-full">
+                        <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Price</label>
+                        <input
+                          type="number"
+                          required
+                          value={item.price}
+                          onChange={(e) => updateInvoiceItem(index, 'price', Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
+                          placeholder="Price"
+                        />
+                      </div>
+
+                      {/* Discount */}
+                      <div className="col-span-1 w-full">
+                        <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Disc</label>
+                        <input
+                          type="number"
+                          value={item.discount}
+                          onChange={(e) => updateInvoiceItem(index, 'discount', Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
+                          placeholder="Disc"
+                        />
+                      </div>
+
+                      {/* GST % & Action */}
+                      <div className="col-span-2 w-full flex items-center justify-between gap-2">
+                        <div className="w-full">
+                          <label className="block md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">GST %</label>
+                          <input
+                            type="number"
+                            value={item.taxRate}
+                            onChange={(e) => updateInvoiceItem(index, 'taxRate', Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9 text-center"
+                          />
+                        </div>
+                        {invoiceForm.items.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeInvoiceItem(index)}
+                            className="text-red-500 hover:text-red-700 font-semibold cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        ) : (
+                          <div className="w-5" />
+                        )}
+                      </div>
+
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               {/* Payment logged */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Advanced Paid ($)</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Advanced Paid ({currencySymbol})</label>
                   <input
                     type="number"
                     value={invoiceForm.amountPaid}
                     onChange={(e) => setInvoiceForm({ ...invoiceForm, amountPaid: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 h-9"
                     placeholder="0.00"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowAddInvoice(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10"
-                >
-                  {loading ? 'Compiling corporate PDF...' : 'Get Invoice'}
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowAddInvoice(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-all"
+              >
+                {loading ? 'Compiling corporate PDF...' : 'Get Invoice'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
