@@ -117,10 +117,10 @@ const Dashboard = () => {
 
   // Quick-action cards differ by role
   const adminQuickActions = [
-    { label: 'Sales & Billing', icon: <FileSpreadsheet size={20} />, path: '/sales', color: 'blue', desc: 'Manage invoices & receipts' },
+    { label: 'Sales', icon: <FileSpreadsheet size={20} />, path: '/sales', color: 'blue', desc: 'Manage invoices & receipts' },
     { label: 'Expenses', icon: <DollarSign size={20} />, path: '/expenses', color: 'emerald', desc: 'Track operational costs' },
     { label: 'Purchases', icon: <ShoppingBag size={20} />, path: '/purchases', color: 'amber', desc: 'POs, entries & vendors' },
-    { label: 'Invoices', icon: <FileText size={20} />, path: '/invoices', color: 'purple', desc: 'Download client invoices' },
+    { label: 'Reports', icon: <Layers size={20} />, path: '/reports', color: 'purple', desc: 'Inspect operations reports' },
     { label: 'System Settings', icon: <ShieldCheck size={20} />, path: '/settings', color: 'cyan', desc: 'Configure company profile' },
   ];
 

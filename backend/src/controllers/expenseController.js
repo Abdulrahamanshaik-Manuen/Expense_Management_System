@@ -129,3 +129,43 @@ export const deleteExpense = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Update an existing expense
+// @route   PUT /api/expenses/:id
+// @access  Private (Manager/Admin)
+export const updateExpense = async (req, res) => {
+  try {
+    const { title, amount, category, date, paymentMethod, paidTo, notes, paymentStatus, companyId } = req.body;
+    const expense = await Expense.findById(req.params.id);
+
+    if (!expense) {
+      return res.status(404).json({ message: 'Expense not found' });
+    }
+
+    if (title !== undefined) expense.title = title;
+    if (amount !== undefined) expense.amount = Number(amount);
+    if (category !== undefined) expense.category = category;
+    if (date !== undefined) expense.date = date;
+    if (paymentMethod !== undefined) expense.paymentMethod = paymentMethod;
+    if (paidTo !== undefined) expense.paidTo = paidTo;
+    if (notes !== undefined) expense.notes = notes;
+    if (paymentStatus !== undefined) expense.paymentStatus = paymentStatus;
+    if (companyId !== undefined) expense.companyId = companyId;
+
+    if (req.file) {
+      expense.receiptUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+    }
+
+    const updatedExpense = await expense.save();
+    
+    const populated = await updatedExpense.populate([
+      { path: 'category', select: 'name' },
+      { path: 'companyId' }
+    ]);
+
+    res.json(populated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+

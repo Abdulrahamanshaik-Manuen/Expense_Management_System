@@ -5,6 +5,7 @@ import {
   updateExpenseStatus,
   updateExpensePaymentStatus,
   deleteExpense,
+  updateExpense,
 } from '../controllers/expenseController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { upload } from '../middlewares/uploadMiddleware.js';
@@ -22,6 +23,7 @@ router.route('/:id/payment')
   .put(protect, updateExpensePaymentStatus);
 
 router.route('/:id')
+  .put(protect, upload.single('receipt'), updateExpense)
   .delete(protect, authorizeRoles('admin'), deleteExpense);
 
 export default router;

@@ -10,7 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
-import Invoices from './pages/Invoices';
+import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
 // Layout wrapper
@@ -42,7 +42,7 @@ function App() {
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/sales" element={<Sales />} />
-            <Route path="/invoices" element={<Invoices />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>

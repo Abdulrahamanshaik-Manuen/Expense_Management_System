@@ -6,6 +6,7 @@ import {
   updateInvoicePayment,
   deleteInvoice,
   downloadInvoice,
+  updateInvoice,
 } from '../controllers/invoiceController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 
@@ -17,6 +18,7 @@ router.route('/')
 
 router.route('/:id')
   .get(protect, getInvoiceById)
+  .put(protect, updateInvoice)
   .delete(protect, authorizeRoles('admin'), deleteInvoice);
 
 router.route('/:id/payment')

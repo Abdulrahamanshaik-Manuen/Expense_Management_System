@@ -11,31 +11,109 @@ const purchaseEntrySchema = new mongoose.Schema(
       ref: 'Vendor',
       required: true,
     },
-    items: [
-      {
-        name: { type: String, required: true },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
-        taxRate: { type: Number, default: 18 },
-        warrantyMonths: { type: Number, default: 0 },
-      },
-    ],
+    purchaseVoucherNumber: {
+      type: String,
+      unique: true,
+    },
+    purchaseDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
     invoiceNumber: {
       type: String,
       required: true,
     },
+    invoiceDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    // Supplier Information Snapshot (for historical records)
+    supplierName: {
+      type: String,
+      required: true,
+    },
+    supplierGSTIN: {
+      type: String,
+    },
+    supplierMobileNumber: {
+      type: String,
+    },
+    supplierEmail: {
+      type: String,
+    },
+    supplierAddress: {
+      type: String,
+    },
+    // Item Details (Strictly excluding GST and HSN/SAC codes)
+    items: [
+      {
+        name: { type: String, required: true },
+        code: { type: String },
+        quantity: { type: Number, required: true },
+        unit: { type: String, default: 'Pcs' },
+        price: { type: Number, required: true }, // Unit Price
+        discountType: { type: String, enum: ['percentage', 'amount'], default: 'percentage' },
+        discountValue: { type: Number, default: 0 },
+        discountAmount: { type: Number, default: 0 },
+        totalItemAmount: { type: Number, required: true },
+      },
+    ],
+    // Additional Overhead Charges
+    transportationCharges: {
+      type: Number,
+      default: 0,
+    },
+    packingCharges: {
+      type: Number,
+      default: 0,
+    },
+    loadingUnloadingCharges: {
+      type: Number,
+      default: 0,
+    },
+    otherCharges: {
+      type: Number,
+      default: 0,
+    },
+    // Summary Fields
+    subTotal: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    totalDiscount: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    additionalChargesTotal: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    grandTotal: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    // Legacy support field (totalAmount)
     totalAmount: {
       type: Number,
       required: true,
+      default: 0,
     },
-    invoiceUrl: {
-      type: String,
-      required: true,
-    },
+    // Payment details
     paymentStatus: {
       type: String,
-      enum: ['Paid', 'Pending', 'Partial'],
-      default: 'Pending',
+      enum: ['Paid', 'Unpaid', 'Partial'],
+      default: 'Unpaid',
+    },
+    paymentMode: {
+      type: String,
+      enum: ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Credit'],
+      default: 'Cash',
     },
     amountPaid: {
       type: Number,
@@ -44,9 +122,17 @@ const purchaseEntrySchema = new mongoose.Schema(
     amountDue: {
       type: Number,
       required: true,
+      default: 0,
     },
-    dueDate: {
-      type: Date,
+    paymentReferenceNumber: {
+      type: String,
+    },
+    // Additional notes & file
+    notes: {
+      type: String,
+    },
+    invoiceUrl: {
+      type: String,
     },
     addedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -58,11 +144,6 @@ const purchaseEntrySchema = new mongoose.Schema(
       ref: 'CompanySetting',
       default: '6a0d837fd7ace7063e6a8379',
     },
-    supportingDocs: [
-      {
-        type: String,
-      },
-    ],
   },
   {
     timestamps: true,

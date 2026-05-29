@@ -5,6 +5,8 @@ import {
   getPurchaseOrderById,
   updatePurchaseOrderStatus,
   downloadPurchaseOrder,
+  updatePurchaseOrder,
+  deletePurchaseOrder,
 } from '../controllers/purchaseOrderController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 
@@ -15,7 +17,9 @@ router.route('/')
   .get(protect, getPurchaseOrders);
 
 router.route('/:id')
-  .get(protect, getPurchaseOrderById);
+  .get(protect, getPurchaseOrderById)
+  .put(protect, authorizeRoles('admin'), updatePurchaseOrder)
+  .delete(protect, authorizeRoles('admin'), deletePurchaseOrder);
 
 router.route('/:id/status')
   .put(protect, authorizeRoles('admin'), updatePurchaseOrderStatus);

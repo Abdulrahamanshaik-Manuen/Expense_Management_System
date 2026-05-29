@@ -23,7 +23,8 @@ import {
   FileCheck,
   Eye,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BookOpen
 } from 'lucide-react';
 
 /** Indian Currency Number-to-Words */
@@ -65,7 +66,7 @@ const Purchases = () => {
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
 
   const filteredEntries = entries.filter(entry => {
-    const entryDate = new Date(entry.createdAt);
+    const entryDate = new Date(entry.purchaseDate || entry.createdAt);
     const matchMonth = filterMonth === 'All' || (entryDate.getMonth() + 1) === parseInt(filterMonth);
     const matchYear = filterYear === 'All' || entryDate.getFullYear() === parseInt(filterYear);
     return matchMonth && matchYear;
@@ -91,18 +92,19 @@ const Purchases = () => {
     let filename = '';
 
     if (activeTab === 'entries') {
-      headers = ['Invoice Number', 'Supplier', 'PO Ref', 'Total Amount', 'Currency', 'Amount Paid', 'Amount Due', 'Payment Status', 'Due Date', 'Created At'];
+      headers = ['Voucher Number', 'Invoice Number', 'Supplier', 'PO Ref', 'Total Amount', 'Currency', 'Amount Paid', 'Amount Due', 'Payment Status', 'Voucher Date', 'Invoice Date'];
       rows = filteredEntries.map(entry => [
+        entry.purchaseVoucherNumber || 'N/A',
         entry.invoiceNumber,
-        entry.vendor?.name || 'N/A',
+        entry.supplierName || entry.vendor?.name || 'N/A',
         entry.poRef?.poNumber || 'Direct Purchase',
-        entry.totalAmount.toFixed(2),
+        (entry.grandTotal || entry.totalAmount || 0).toFixed(2),
         activeCurrency,
-        entry.amountPaid.toFixed(2),
-        entry.amountDue.toFixed(2),
+        (entry.amountPaid || 0).toFixed(2),
+        (entry.amountDue || 0).toFixed(2),
         entry.paymentStatus,
-        entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : 'N/A',
-        new Date(entry.createdAt).toLocaleDateString()
+        entry.purchaseDate ? new Date(entry.purchaseDate).toLocaleDateString() : 'N/A',
+        entry.invoiceDate ? new Date(entry.invoiceDate).toLocaleDateString() : 'N/A'
       ]);
       filename = `Purchase_Entries_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`;
     } else if (activeTab === 'orders') {
@@ -118,7 +120,7 @@ const Purchases = () => {
       ]);
       filename = `Purchase_Orders_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`;
     } else if (activeTab === 'vendors') {
-      headers = ['Supplier Name', 'Payment Terms', 'Contact Person', 'Email', 'Phone', 'GSTIN', 'Created At'];
+      headers = ['Supplier Name', 'Payment Terms', 'Contact Person', 'Email', 'Phone', 'GSTIN', 'Invoices List'];
       rows = filteredVendors.map(ven => [
         ven.name,
         ven.paymentTerms,
@@ -126,7 +128,7 @@ const Purchases = () => {
         ven.email,
         ven.phone || 'N/A',
         ven.gstNumber || 'N/A',
-        new Date(ven.createdAt).toLocaleDateString()
+        getVendorInvoices(ven._id)
       ]);
       filename = `Suppliers_Registry_Report_${filterMonth === 'All' ? 'All_Months' : 'Month_' + filterMonth}_${filterYear === 'All' ? 'All_Years' : filterYear}.csv`;
     }
@@ -160,6 +162,20 @@ const Purchases = () => {
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showEntryPreviewModal, setShowEntryPreviewModal] = useState(false);
 
+  // Supplier Ledger Modal State
+  const [showLedgerModal, setShowLedgerModal] = useState(false);
+  const [selectedVendorForLedger, setSelectedVendorForLedger] = useState(null);
+  const [ledgerData, setLedgerData] = useState([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // Edit states for Purchase Entries
+  const [isEditingEntry, setIsEditingEntry] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState(null);
+
+  // Edit states for Purchase Orders
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+
   // 2. Vendor Form State
   const [vendorForm, setVendorForm] = useState({
     name: '',
@@ -183,18 +199,30 @@ const Purchases = () => {
     poRef: '',
     vendor: '',
     invoiceNumber: '',
-    totalAmount: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    purchaseDate: new Date().toISOString().split('T')[0],
+    subTotal: 0,
+    totalDiscount: 0,
+    transportationCharges: 0,
+    packingCharges: 0,
+    loadingUnloadingCharges: 0,
+    otherCharges: 0,
+    additionalChargesTotal: 0,
+    grandTotal: 0,
+    paymentStatus: 'Unpaid',
+    paymentMode: 'Cash',
     amountPaid: '0',
-    dueDate: '',
-    items: [{ name: '', quantity: 1, price: '', warrantyMonths: 12 }],
+    amountDue: 0,
+    paymentReferenceNumber: '',
+    notes: '',
+    items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
     companyId: '',
   });
   const [invoiceFile, setInvoiceFile] = useState(null);
 
-  // 5. Payment Log State
-  const [payLogVal, setPayLogVal] = useState({});
-  // Download state for PO buttons
+  // Download state for PO/PV buttons
   const [downloadingPoId, setDownloadingPoId] = useState(null);
+  const [downloadingPvId, setDownloadingPvId] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -217,7 +245,11 @@ const Purchases = () => {
       // Auto-prefills first vendor
       if (venRes.data.length > 0) {
         setPoForm(prev => ({ ...prev, vendor: venRes.data[0]._id }));
-        setEntryForm(prev => ({ ...prev, vendor: venRes.data[0]._id }));
+        setEntryForm(prev => ({ 
+          ...prev, 
+          vendor: venRes.data[0]._id,
+          companyId: settingsRes.data[0]?._id || ''
+        }));
       }
       // Auto-prefills first company setting
       if (settingsRes.data.length > 0) {
@@ -237,7 +269,7 @@ const Purchases = () => {
     setShowDocViewer(true);
   };
 
-  // Download PO via the unified download endpoint
+  // Download PO PDF
   const downloadPO = async (poId, poNumber) => {
     try {
       setDownloadingPoId(poId);
@@ -257,6 +289,29 @@ const Purchases = () => {
       alert('Failed to download Purchase Order PDF.');
     } finally {
       setDownloadingPoId(null);
+    }
+  };
+
+  // Download Purchase Voucher PDF
+  const downloadVoucherPDF = async (entryId, voucherNumber) => {
+    try {
+      setDownloadingPvId(entryId);
+      const res = await API.get(`/purchase-entries/${entryId}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${voucherNumber || 'purchase-voucher'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Voucher PDF download failed:', err);
+      alert('Failed to download Purchase Voucher PDF.');
+    } finally {
+      setDownloadingPvId(null);
     }
   };
 
@@ -305,74 +360,199 @@ const Purchases = () => {
     e.preventDefault();
     try {
       setLoading(true);
-      await API.post('/purchase-orders', poForm);
+      if (isEditingOrder) {
+        await API.put(`/purchase-orders/${editingOrderId}`, poForm);
+      } else {
+        await API.post('/purchase-orders', poForm);
+      }
       setPoForm({
         vendor: vendors[0]?._id || '',
         items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
         companyId: companyProfiles[0]?._id || '',
       });
+      setIsEditingOrder(false);
+      setEditingOrderId(null);
       setShowAddOrder(false);
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.message || 'Error creating PO.');
+      alert(err.response?.data?.message || 'Error processing PO.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleEditOrder = (po) => {
+    setIsEditingOrder(true);
+    setEditingOrderId(po._id);
+    setPoForm({
+      vendor: po.vendor?._id || po.vendor || '',
+      items: po.items && po.items.length > 0
+        ? po.items.map(item => ({
+            name: item.name || '',
+            quantity: item.quantity || 1,
+            price: item.price || '',
+            taxRate: item.taxRate !== undefined ? item.taxRate : 18
+          }))
+        : [{ name: '', quantity: 1, price: '', taxRate: 18 }],
+      companyId: po.companyId?._id || po.companyId || companyProfiles[0]?._id || '',
+    });
+    setShowAddOrder(true);
+  };
+
+  const handleDeleteOrder = async (poId) => {
+    if (!window.confirm('Are you sure you want to delete this Purchase Order permanently?')) return;
+    try {
+      setLoading(true);
+      await API.delete(`/purchase-orders/${poId}`);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error deleting Purchase Order.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closePoModal = () => {
+    setShowAddOrder(false);
+    setIsEditingOrder(false);
+    setEditingOrderId(null);
+    setPoForm({
+      vendor: vendors[0]?._id || '',
+      items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
+      companyId: companyProfiles[0]?._id || '',
+    });
+  };
+
+  // Automated Inline Calculations for Purchase Entry Form
+  const calculateTotals = (form) => {
+    let subTotal = 0;
+    let totalDiscount = 0;
+    
+    const updatedItems = form.items.map(item => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+      const discountVal = Number(item.discountValue || 0);
+      
+      const itemSubtotal = qty * price;
+      let discAmt = 0;
+      if (item.discountType === 'percentage') {
+        discAmt = itemSubtotal * (discountVal / 100);
+      } else {
+        discAmt = discountVal;
+      }
+      
+      const totalItemAmount = itemSubtotal - discAmt;
+      
+      subTotal += itemSubtotal;
+      totalDiscount += discAmt;
+      
+      return {
+        ...item,
+        discountAmount: discAmt,
+        totalItemAmount: totalItemAmount >= 0 ? totalItemAmount : 0
+      };
+    });
+    
+    const transportation = Number(form.transportationCharges || 0);
+    const packing = Number(form.packingCharges || 0);
+    const loading = Number(form.loadingUnloadingCharges || 0);
+    const other = Number(form.otherCharges || 0);
+    
+    const additionalChargesTotal = transportation + packing + loading + other;
+    const grandTotal = subTotal - totalDiscount + additionalChargesTotal;
+    
+    let paid = Number(form.amountPaid || 0);
+    let status = form.paymentStatus;
+    
+    if (status === 'Paid') {
+      paid = grandTotal;
+    } else if (status === 'Unpaid') {
+      paid = 0;
+    }
+    
+    const amountDue = grandTotal - paid;
+    
+    return {
+      ...form,
+      items: updatedItems,
+      subTotal,
+      totalDiscount,
+      additionalChargesTotal,
+      grandTotal,
+      amountPaid: paid.toString(),
+      amountDue: amountDue >= 0 ? amountDue : 0
+    };
+  };
+
   // Entry Items Helpers
   const addEntryItem = () => {
-    setEntryForm({
+    const updated = {
       ...entryForm,
-      items: [...entryForm.items, { name: '', quantity: 1, price: '', warrantyMonths: 12 }]
-    });
+      items: [...entryForm.items, { name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }]
+    };
+    setEntryForm(calculateTotals(updated));
   };
 
   const updateEntryItem = (index, field, value) => {
     const newItems = [...entryForm.items];
     newItems[index][field] = value;
-    setEntryForm({ ...entryForm, items: newItems });
+    const updated = { ...entryForm, items: newItems };
+    setEntryForm(calculateTotals(updated));
   };
 
   const removeEntryItem = (index) => {
     const newItems = entryForm.items.filter((_, i) => i !== index);
-    setEntryForm({ ...entryForm, items: newItems });
+    const updated = { ...entryForm, items: newItems };
+    setEntryForm(calculateTotals(updated));
+  };
+
+  const handleEntryFieldChange = (field, value) => {
+    const updated = { ...entryForm, [field]: value };
+    setEntryForm(calculateTotals(updated));
   };
 
   const handlePoRefChange = (poId) => {
     if (!poId) {
-      setEntryForm(prev => ({
-        ...prev,
+      const reset = {
+        ...entryForm,
         poRef: '',
         vendor: vendors[0]?._id || '',
-        totalAmount: '',
-        items: [{ name: '', quantity: 1, price: '', warrantyMonths: 12 }]
-      }));
+        subTotal: 0,
+        totalDiscount: 0,
+        grandTotal: 0,
+        items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }]
+      };
+      setEntryForm(calculateTotals(reset));
       return;
     }
 
     const selectedPo = orders.find(o => o._id === poId);
     if (selectedPo) {
-      setEntryForm(prev => ({
-        ...prev,
+      const mapped = {
+        ...entryForm,
         poRef: poId,
         vendor: selectedPo.vendor?._id || selectedPo.vendor || '',
-        totalAmount: selectedPo.totalAmount.toString(),
         items: selectedPo.items.map(item => ({
           name: item.name,
+          code: '',
           quantity: item.quantity,
+          unit: 'Pcs',
           price: item.price,
-          warrantyMonths: 12
+          discountType: 'percentage',
+          discountValue: 0,
+          discountAmount: 0,
+          totalItemAmount: item.quantity * item.price
         }))
-      }));
+      };
+      setEntryForm(calculateTotals(mapped));
     }
   };
 
   // Submit Purchase Entry
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
-    if (!invoiceFile) {
-      alert('Supporting Invoice document upload is required.');
+    if (!invoiceFile && !isEditingEntry) {
+      alert('Supporting Supplier Invoice document upload is required.');
       return;
     }
     try {
@@ -381,76 +561,178 @@ const Purchases = () => {
       data.append('poRef', entryForm.poRef);
       data.append('vendor', entryForm.vendor);
       data.append('invoiceNumber', entryForm.invoiceNumber);
-      data.append('totalAmount', entryForm.totalAmount);
+      data.append('invoiceDate', entryForm.invoiceDate);
+      data.append('purchaseDate', entryForm.purchaseDate);
+
+      data.append('subTotal', entryForm.subTotal);
+      data.append('totalDiscount', entryForm.totalDiscount);
+      data.append('transportationCharges', entryForm.transportationCharges);
+      data.append('packingCharges', entryForm.packingCharges);
+      data.append('loadingUnloadingCharges', entryForm.loadingUnloadingCharges);
+      data.append('otherCharges', entryForm.otherCharges);
+      data.append('additionalChargesTotal', entryForm.additionalChargesTotal);
+      data.append('grandTotal', entryForm.grandTotal);
+
+      data.append('paymentStatus', entryForm.paymentStatus);
+      data.append('paymentMode', entryForm.paymentMode);
       data.append('amountPaid', entryForm.amountPaid);
-      data.append('dueDate', entryForm.dueDate);
+      data.append('amountDue', entryForm.amountDue);
+      data.append('paymentReferenceNumber', entryForm.paymentReferenceNumber);
+      data.append('notes', entryForm.notes);
+
       data.append('items', JSON.stringify(entryForm.items));
       if (entryForm.companyId) {
         data.append('companyId', entryForm.companyId);
       }
-      data.append('invoice', invoiceFile);
+      if (invoiceFile) {
+        data.append('invoice', invoiceFile);
+      }
 
-      await API.post('/purchase-entries', data, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      if (isEditingEntry) {
+        await API.put(`/purchase-entries/${editingEntryId}`, data, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        await API.post('/purchase-entries', data, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
 
       setEntryForm({
         poRef: '',
         vendor: vendors[0]?._id || '',
         invoiceNumber: '',
-        totalAmount: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
+        purchaseDate: new Date().toISOString().split('T')[0],
+        subTotal: 0,
+        totalDiscount: 0,
+        transportationCharges: 0,
+        packingCharges: 0,
+        loadingUnloadingCharges: 0,
+        otherCharges: 0,
+        additionalChargesTotal: 0,
+        grandTotal: 0,
+        paymentStatus: 'Unpaid',
+        paymentMode: 'Cash',
         amountPaid: '0',
-        dueDate: '',
-        items: [{ name: '', quantity: 1, price: '', warrantyMonths: 12 }],
+        amountDue: 0,
+        paymentReferenceNumber: '',
+        notes: '',
+        items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
         companyId: companyProfiles[0]?._id || '',
       });
       setInvoiceFile(null);
+      setIsEditingEntry(false);
+      setEditingEntryId(null);
       setShowAddEntry(false);
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.message || 'Error creating purchase entry.');
+      alert(err.response?.data?.message || 'Error processing purchase entry.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Record payouts dynamically
-  const handleRecordPayment = async (entryId) => {
-    const payVal = Number(payLogVal[entryId]);
-    if (isNaN(payVal) || payVal <= 0) {
-      alert('Please enter a valid payout amount.');
-      return;
-    }
+  // Edit entry trigger
+  const handleEditEntry = (entry) => {
+    setIsEditingEntry(true);
+    setEditingEntryId(entry._id);
+    setEntryForm({
+      poRef: entry.poRef?._id || entry.poRef || '',
+      vendor: entry.vendor?._id || entry.vendor || '',
+      invoiceNumber: entry.invoiceNumber || '',
+      invoiceDate: entry.invoiceDate ? new Date(entry.invoiceDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      purchaseDate: entry.purchaseDate ? new Date(entry.purchaseDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      subTotal: entry.subTotal || entry.totalAmount || 0,
+      totalDiscount: entry.totalDiscount || 0,
+      transportationCharges: entry.transportationCharges || 0,
+      packingCharges: entry.packingCharges || 0,
+      loadingUnloadingCharges: entry.loadingUnloadingCharges || 0,
+      otherCharges: entry.otherCharges || 0,
+      additionalChargesTotal: entry.additionalChargesTotal || 0,
+      grandTotal: entry.grandTotal || entry.totalAmount || 0,
+      paymentStatus: entry.paymentStatus || 'Unpaid',
+      paymentMode: entry.paymentMode || 'Cash',
+      amountPaid: entry.amountPaid !== undefined ? entry.amountPaid.toString() : '0',
+      amountDue: entry.amountDue !== undefined ? entry.amountDue : 0,
+      paymentReferenceNumber: entry.paymentReferenceNumber || '',
+      notes: entry.notes || '',
+      items: entry.items && entry.items.length > 0 
+        ? entry.items.map(item => ({
+            name: item.name || '',
+            code: item.code || '',
+            quantity: item.quantity || 1,
+            unit: item.unit || 'Pcs',
+            price: item.price || '',
+            discountType: item.discountType || 'percentage',
+            discountValue: item.discountValue || 0,
+            discountAmount: item.discountAmount || 0,
+            totalItemAmount: item.totalItemAmount || 0
+          }))
+        : [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
+      companyId: entry.companyId?._id || entry.companyId || companyProfiles[0]?._id || '',
+    });
+    setInvoiceFile(null);
+    setShowAddEntry(true);
+  };
+
+  // Delete entry trigger
+  const handleDeleteEntry = async (entryId) => {
+    if (!window.confirm('Are you sure you want to delete this purchase entry? This will reverse all supplier ledger and double-entry accounts journal entries.')) return;
     try {
-      await API.put(`/purchase-entries/${entryId}/payment`, { amountPaid: payVal });
-      setPayLogVal(prev => ({ ...prev, [entryId]: '' }));
+      setLoading(true);
+      await API.delete(`/purchase-entries/${entryId}`);
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.message || 'Payment tracking log failed.');
+      alert(err.response?.data?.message || 'Failed to delete purchase entry.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Compute stats metrics dynamically
+  // Fetch Supplier Ledger Transaction Statement
+  const openSupplierLedger = async (vendor) => {
+    setSelectedVendorForLedger(vendor);
+    setLedgerLoading(true);
+    setShowLedgerModal(true);
+    try {
+      const res = await API.get(`/accounting/vendors/${vendor._id}/ledger`);
+      setLedgerData(res.data);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to load supplier audit ledger transactions statement.');
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
+
+  // Helper: List invoices of a vendor
+  const getVendorInvoices = (vendorId) => {
+    const matched = entries.filter(e => (e.vendor?._id || e.vendor) === vendorId);
+    if (matched.length === 0) return 'No Invoices';
+    return matched.map(e => `#${e.invoiceNumber}`).join(', ');
+  };
+
+  // Compute metrics dynamically
   const totalDues = entries.reduce((sum, item) => sum + (item.amountDue || 0), 0);
   const totalPOAmount = orders.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
 
   return (
     <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)]">
+      
       {/* ── PROCUREMENT KPIS ─────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {/* Outstanding Dues */}
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden group hover:border-red-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Outstanding Payables</span>
-            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
+            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-650">
               <AlertTriangle size={16} />
             </div>
           </div>
-          <h3 className="text-xl font-black text-slate-900">₹{totalDues.toLocaleString()}</h3>
+          <h3 className="text-xl font-black text-slate-900">{currencySymbol}{totalDues.toLocaleString()}</h3>
           <p className="text-[11px] text-slate-500 mt-1">Pending payments to vendors</p>
         </div>
 
-        {/* Issued PO Value */}
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Issued PO Value</span>
@@ -458,11 +740,10 @@ const Purchases = () => {
               <ShoppingBag size={16} />
             </div>
           </div>
-          <h3 className="text-xl font-black text-slate-900">₹{totalPOAmount.toLocaleString()}</h3>
+          <h3 className="text-xl font-black text-slate-900">{currencySymbol}{totalPOAmount.toLocaleString()}</h3>
           <p className="text-[11px] text-slate-500 mt-1">{orders.length} Purchase Orders active</p>
         </div>
 
-        {/* Total Vendors */}
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Standard Suppliers</span>
@@ -482,7 +763,7 @@ const Purchases = () => {
             onClick={() => setActiveTab('entries')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${activeTab === 'entries'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent hover:border-slate-150'
+              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent'
               }`}
           >
             <Landmark size={14} /> Purchase Entries ({filteredEntries.length})
@@ -491,7 +772,7 @@ const Purchases = () => {
             onClick={() => setActiveTab('orders')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${activeTab === 'orders'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent hover:border-slate-150'
+              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent'
               }`}
           >
             <FileCheck size={14} /> Purchase Orders ({filteredOrders.length})
@@ -500,27 +781,63 @@ const Purchases = () => {
             onClick={() => setActiveTab('vendors')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${activeTab === 'vendors'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent hover:border-slate-150'
+              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent'
               }`}
           >
             <Building size={14} /> Suppliers ({filteredVendors.length})
           </button>
         </div>
 
-        {/* Dynamic Contextual Action Trigger */}
+        {/* Action triggers */}
         <div className="flex justify-end">
           {activeTab === 'entries' && (
             <button
-              onClick={() => setShowAddEntry(true)}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5 active:translate-y-0"
+              onClick={() => {
+                setIsEditingEntry(false);
+                setEntryForm({
+                  poRef: '',
+                  vendor: vendors[0]?._id || '',
+                  invoiceNumber: '',
+                  invoiceDate: new Date().toISOString().split('T')[0],
+                  purchaseDate: new Date().toISOString().split('T')[0],
+                  subTotal: 0,
+                  totalDiscount: 0,
+                  transportationCharges: 0,
+                  packingCharges: 0,
+                  loadingUnloadingCharges: 0,
+                  otherCharges: 0,
+                  additionalChargesTotal: 0,
+                  grandTotal: 0,
+                  paymentStatus: 'Unpaid',
+                  paymentMode: 'Cash',
+                  amountPaid: '0',
+                  amountDue: 0,
+                  paymentReferenceNumber: '',
+                  notes: '',
+                  items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
+                  companyId: companyProfiles[0]?._id || '',
+                });
+                setInvoiceFile(null);
+                setShowAddEntry(true);
+              }}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5"
             >
               <Plus size={14} /> Log Entry
             </button>
           )}
           {activeTab === 'orders' && (
             <button
-              onClick={() => setShowAddOrder(true)}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5 active:translate-y-0"
+              onClick={() => {
+                setIsEditingOrder(false);
+                setEditingOrderId(null);
+                setPoForm({
+                  vendor: vendors[0]?._id || '',
+                  items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
+                  companyId: companyProfiles[0]?._id || '',
+                });
+                setShowAddOrder(true);
+              }}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5"
             >
               <Plus size={14} /> Draft PO
             </button>
@@ -528,7 +845,7 @@ const Purchases = () => {
           {activeTab === 'vendors' && (
             <button
               onClick={() => setShowAddVendor(true)}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5 active:translate-y-0"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5"
             >
               <Plus size={14} /> Register Vendor
             </button>
@@ -543,7 +860,8 @@ const Purchases = () => {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Reports & Filtering Toolbar */}
+          
+          {/* Reports Toolbar */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-col gap-1">
@@ -595,45 +913,50 @@ const Purchases = () => {
 
           {/* TAB 1: Purchase Entries */}
           {activeTab === 'entries' && (
-            <>
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-800">Goods Received & Purchase Entries</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">Physical items processed with linked corporate invoices</p>
-                  </div>
-                  <Landmark className="text-blue-600" size={18} />
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h4 className="font-extrabold text-sm text-slate-800">Goods Received & Purchase Entries</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Physical items processed with linked corporate invoices</p>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                        <th className="px-6 py-4">Invoice details</th>
-                        <th className="px-6 py-4">Financials</th>
-                        <th className="px-6 py-4">Outstanding dues</th>
-                        <th className="px-6 py-4">Invoice File</th>
-                        <th className="px-6 py-4">Record Payout</th>
+                <Landmark className="text-blue-600" size={18} />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                      <th className="px-6 py-4">Voucher No & Date</th>
+                      <th className="px-6 py-4">Invoice details</th>
+                      <th className="px-6 py-4">Financials & Charges</th>
+                      <th className="px-6 py-4">Outstanding dues</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
+                    {filteredEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="text-center py-12 text-slate-400 font-medium">
+                          No purchase entries matching the selected filters.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
-                      {filteredEntries.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" className="text-center py-12 text-slate-400 font-medium">
-                            No purchase entries matching the selected filters.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredEntries.map((entry) => (
-                          <tr key={entry._id} className="hover:bg-slate-50 transition-colors">
+                    ) : (
+                      filteredEntries.map((entry) => (
+                        <tr key={entry._id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <p className="font-bold text-slate-800">Invoice: #{entry.invoiceNumber}</p>
-                            <p className="text-[10px] text-slate-500 mt-1">
-                              Supplier: {entry.vendor?.name} • PO: {entry.poRef?.poNumber || 'Direct Purchase'}
+                            <p className="font-extrabold text-slate-900">{entry.purchaseVoucherNumber || 'N/A'}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Date: {entry.purchaseDate ? new Date(entry.purchaseDate).toLocaleDateString('en-GB') : 'N/A'}
                             </p>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="font-extrabold text-slate-900">{currencySymbol}{entry.totalAmount.toLocaleString()}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Paid: {currencySymbol}{entry.amountPaid.toLocaleString()}</p>
+                            <p className="font-bold text-slate-800">Invoice: #{entry.invoiceNumber}</p>
+                            <p className="text-[10px] text-slate-500 mt-1">
+                              Supplier: {entry.supplierName || entry.vendor?.name} • PO: {entry.poRef?.poNumber || 'Direct Purchase'}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="font-extrabold text-slate-900">{currencySymbol}{(entry.grandTotal || entry.totalAmount || 0).toLocaleString()}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Paid: {currencySymbol}{entry.amountPaid.toLocaleString()} • Charges: {currencySymbol}{(entry.additionalChargesTotal || 0).toLocaleString()}</p>
                           </td>
                           <td className="px-6 py-4">
                             <p className="font-extrabold text-red-650">{currencySymbol}{entry.amountDue.toLocaleString()}</p>
@@ -649,52 +972,38 @@ const Purchases = () => {
                               </span>
                             </p>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => {
                                   setSelectedEntry(entry);
                                   setShowEntryPreviewModal(true);
                                 }}
-                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                                className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
                               >
                                 <Eye size={13} className="text-slate-450" />
                                 View
                               </button>
-                              {entry.invoiceUrl ? (
-                                <button
-                                  onClick={() => handleViewDocument(entry.invoiceUrl, `Invoice #${entry.invoiceNumber}`)}
-                                  className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-500 font-bold hover:underline cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
-                                >
-                                  <FileText size={13} /> File
-                                </button>
-                              ) : (
-                                <span className="text-xs text-slate-400">No File</span>
-                              )}
+                              <button
+                                onClick={() => handleEditEntry(entry)}
+                                className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-600 px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEntry(entry._id)}
+                                className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-red-600 px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                disabled={downloadingPvId === entry._id}
+                                onClick={() => downloadVoucherPDF(entry._id, entry.purchaseVoucherNumber)}
+                                className="inline-flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-500 font-bold cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
+                              >
+                                {downloadingPvId === entry._id ? 'Printing...' : 'Voucher PDF'}
+                              </button>
                             </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            {entry.amountDue > 0 ? (
-                              <div className="flex items-center gap-2 max-w-[160px]">
-                                <input
-                                  type="number"
-                                  placeholder="Amount"
-                                  value={payLogVal[entry._id] || ''}
-                                  onChange={(e) => setPayLogVal({ ...payLogVal, [entry._id]: e.target.value })}
-                                  className="w-20 bg-white border border-slate-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500 text-slate-800 shadow-sm"
-                                />
-                                <button
-                                  onClick={() => handleRecordPayment(entry._id)}
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white rounded px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm shadow-emerald-500/10"
-                                >
-                                  Log
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                                Fully Settled
-                              </span>
-                            )}
                           </td>
                         </tr>
                       ))
@@ -703,8 +1012,7 @@ const Purchases = () => {
                 </table>
               </div>
             </div>
-          </>
-        )}
+          )}
 
           {/* TAB 2: Purchase Orders */}
           {activeTab === 'orders' && (
@@ -724,7 +1032,7 @@ const Purchases = () => {
                       <th className="px-6 py-4">Supplier Vendor</th>
                       <th className="px-6 py-4">Aggregates Total</th>
                       <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Actions</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
@@ -753,17 +1061,29 @@ const Purchases = () => {
                               {po.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => {
                                   setSelectedPo(po);
                                   setShowPoPreviewModal(true);
                                 }}
-                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm animate-fade-in"
                               >
                                 <Eye size={13} className="text-slate-450" />
                                 View
+                              </button>
+                              <button
+                                onClick={() => handleEditOrder(po)}
+                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-blue-600 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteOrder(po._id)}
+                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-55 border border-slate-200 text-red-650 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                              >
+                                Delete
                               </button>
                               <button
                                 onClick={() => downloadPO(po._id, po.poNumber)}
@@ -786,13 +1106,13 @@ const Purchases = () => {
             </div>
           )}
 
-          {/* TAB 4: Suppliers Registry */}
+          {/* TAB 3: Suppliers Registry */}
           {activeTab === 'vendors' && (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
                 <div>
                   <h4 className="font-extrabold text-sm text-slate-800">Registered Suppliers</h4>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Standard vendor profiles and GST listings</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Standard vendor profiles and billing details</p>
                 </div>
                 <Building className="text-emerald-600" size={16} />
               </div>
@@ -806,7 +1126,7 @@ const Purchases = () => {
                   filteredVendors.map((ven) => (
                     <div
                       key={ven._id}
-                      className="bg-slate-50 border border-slate-200 rounded-xl p-5 hover:border-slate-300 hover:bg-white hover:shadow-sm transition-all flex flex-col justify-between"
+                      className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 hover:bg-white hover:shadow-md transition-all duration-300 flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
@@ -815,12 +1135,23 @@ const Purchases = () => {
                             {ven.paymentTerms}
                           </span>
                         </div>
-                        <div className="space-y-2 text-[10px] text-slate-600">
-                          <p><span className="font-bold text-slate-400">Contact:</span> {ven.contactPerson}</p>
+                        <div className="space-y-2 text-[10px] text-slate-655">
+                          <p><span className="font-bold text-slate-400">Contact:</span> {ven.contactPerson || 'N/A'}</p>
                           <p><span className="font-bold text-slate-400">Email:</span> {ven.email}</p>
                           {ven.phone && <p><span className="font-bold text-slate-400">Phone:</span> {ven.phone}</p>}
                           {ven.gstNumber && <p><span className="font-bold text-slate-400">GSTIN:</span> {ven.gstNumber}</p>}
+                          <p className="bg-slate-100/80 p-1.5 rounded border border-slate-200/60 mt-2 truncate"><span className="font-bold text-slate-400 block mb-0.5">Invoice Bills:</span> {getVendorInvoices(ven._id)}</p>
                         </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-end">
+                        <button
+                          onClick={() => openSupplierLedger(ven)}
+                          className="inline-flex items-center gap-1 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 hover:text-slate-900 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          <BookOpen size={12} className="text-blue-500" />
+                          Audit Ledger
+                        </button>
                       </div>
                     </div>
                   ))
@@ -831,26 +1162,25 @@ const Purchases = () => {
 
         </div>
       )}
+
       {/* ================= MODAL: ADD VENDOR ================= */}
       {showAddVendor && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-slate-955/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <form
             onSubmit={handleVendorSubmit}
-            className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+            className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800 animate-scale-up"
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
               <h3 className="text-base font-bold text-slate-800">Register Supplier Vendor</h3>
               <button
                 type="button"
                 onClick={() => setShowAddVendor(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                className="text-slate-400 hover:text-slate-750 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            {/* Scrollable Form Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -865,7 +1195,7 @@ const Purchases = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Contact Person</label>
+                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Contact Person</label>
                   <input
                     type="text"
                     required
@@ -879,7 +1209,7 @@ const Purchases = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Email Address</label>
                   <input
                     type="email"
                     required
@@ -890,7 +1220,7 @@ const Purchases = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Phone Number</label>
                   <input
                     type="text"
                     value={vendorForm.phone}
@@ -939,7 +1269,6 @@ const Purchases = () => {
               </div>
             </div>
 
-            {/* Sticky Footer */}
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
@@ -958,26 +1287,25 @@ const Purchases = () => {
           </form>
         </div>
       )}
+
       {/* ================= MODAL: ADD PURCHASE ORDER ================= */}
       {showAddOrder && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <form
             onSubmit={handlePOSubmit}
-            className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+            className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800 animate-scale-up"
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
-              <h3 className="text-base font-bold text-slate-800">Draft Purchase Order (PO)</h3>
+              <h3 className="text-base font-bold text-slate-800">{isEditingOrder ? 'Edit Purchase Order' : 'Draft Purchase Order (PO)'}</h3>
               <button
                 type="button"
-                onClick={() => setShowAddOrder(false)}
+                onClick={closePoModal}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            {/* Scrollable Form Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1009,7 +1337,6 @@ const Purchases = () => {
                 </div>
               </div>
 
-              {/* Items Array builder */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Purchase Items Lists</label>
@@ -1067,7 +1394,7 @@ const Purchases = () => {
                           <button
                             type="button"
                             onClick={() => removePoItem(index)}
-                            className="text-red-505 hover:text-red-600 font-semibold cursor-pointer"
+                            className="text-red-505 hover:text-red-650 font-semibold cursor-pointer"
                           >
                             ✕
                           </button>
@@ -1079,11 +1406,10 @@ const Purchases = () => {
               </div>
             </div>
 
-            {/* Sticky Footer */}
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
-                onClick={() => setShowAddOrder(false)}
+                onClick={closePoModal}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all bg-white"
               >
                 Cancel
@@ -1093,23 +1419,24 @@ const Purchases = () => {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-colors"
               >
-                {loading ? 'Generating official PDF...' : 'Provision Purchase Order'}
+                {loading ? (isEditingOrder ? 'Saving Changes...' : 'Generating official PDF...') : (isEditingOrder ? 'Save Changes' : 'Provision Purchase Order')}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* ================= MODAL: ADD PURCHASE ENTRY ================= */}
+      {/* ================= MODAL: ADD/EDIT PURCHASE ENTRY (VOUCHER) ================= */}
       {showAddEntry && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <form
             onSubmit={handleEntrySubmit}
-            className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800"
+            className="w-full max-w-4xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden text-slate-800 animate-scale-up"
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
-              <h3 className="text-base font-bold text-slate-800">Log Physical Purchase Entry</h3>
+              <h3 className="text-base font-bold text-slate-900">
+                {isEditingEntry ? 'Edit Purchase Voucher Details' : 'Log Physical Purchase Entry Voucher'}
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowAddEntry(false)}
@@ -1119,211 +1446,378 @@ const Purchases = () => {
               </button>
             </div>
 
-            {/* Scrollable Form Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
-                  <select
-                    required
-                    value={entryForm.companyId}
-                    onChange={(e) => setEntryForm({ ...entryForm, companyId: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    {companyProfiles.map((profile) => (
-                      <option key={profile._id} value={profile._id}>{profile.companyName}</option>
-                    ))}
-                  </select>
-                </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar bg-white">
+              
+              {/* SECTION A: Supplier & Company Profile */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">A. Supplier & Corporate Profiles</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
+                    <select
+                      required
+                      value={entryForm.companyId}
+                      onChange={(e) => handleEntryFieldChange('companyId', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      {companyProfiles.map((profile) => (
+                        <option key={profile._id} value={profile._id}>{profile.companyName}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Select Supplier Vendor</label>
-                  <select
-                    required
-                    value={entryForm.vendor}
-                    onChange={(e) => setEntryForm({ ...entryForm, vendor: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    {vendors.map(ven => (
-                      <option key={ven._id} value={ven._id}>{ven.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Select Supplier Vendor</label>
+                    <select
+                      required
+                      value={entryForm.vendor}
+                      onChange={(e) => handleEntryFieldChange('vendor', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      {vendors.map(ven => (
+                        <option key={ven._id} value={ven._id}>{ven.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Linked PO Reference (Optional)</label>
-                  <select
-                    value={entryForm.poRef}
-                    onChange={(e) => handlePoRefChange(e.target.value)}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="">Direct Purchase (No PO Link)</option>
-                    {orders.filter(o => o.status !== 'Completed').map(po => (
-                      <option key={po._id} value={po._id}>{po.poNumber}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Invoice Bill Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={entryForm.invoiceNumber}
-                    onChange={(e) => setEntryForm({ ...entryForm, invoiceNumber: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                    placeholder="INV-AWS-5523"
-                  />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Linked PO Reference (Optional)</label>
+                    <select
+                      value={entryForm.poRef}
+                      onChange={(e) => handlePoRefChange(e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="">Direct Purchase (No PO Link)</option>
+                      {orders.filter(o => o.status !== 'Completed' || o._id === entryForm.poRef).map(po => (
+                        <option key={po._id} value={po._id}>{po.poNumber}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Payment Due Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={entryForm.dueDate}
-                    onChange={(e) => setEntryForm({ ...entryForm, dueDate: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                  />
-                </div>
+              {/* SECTION B: Voucher & Reference Information */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">B. Voucher & Invoices Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Voucher Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={entryForm.purchaseDate}
+                      onChange={(e) => handleEntryFieldChange('purchaseDate', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Total Bill Amount ({currencySymbol})</label>
-                  <input
-                    type="number"
-                    required
-                    value={entryForm.totalAmount}
-                    onChange={(e) => setEntryForm({ ...entryForm, totalAmount: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                    placeholder="0"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Supplier Invoice Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={entryForm.invoiceNumber}
+                      onChange={(e) => handleEntryFieldChange('invoiceNumber', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      placeholder="e.g. AWS-99234"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Amount Paid Down ({currencySymbol})</label>
-                  <input
-                    type="number"
-                    required
-                    value={entryForm.amountPaid}
-                    onChange={(e) => setEntryForm({ ...entryForm, amountPaid: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Supplier Invoice Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={entryForm.invoiceDate}
+                      onChange={(e) => handleEntryFieldChange('invoiceDate', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Upload Physical Invoice Bill (Required)</label>
-                <div
-                  onClick={() => invoiceFileInput.current.click()}
-                  className="w-full bg-slate-50 border border-dashed border-slate-200 hover:border-blue-500 rounded-xl py-4 flex items-center justify-center gap-3 cursor-pointer transition-all"
-                >
-                  <FolderOpen className="text-blue-500" size={16} />
-                  <span className="text-xs font-semibold text-slate-600">
-                    {invoiceFile ? invoiceFile.name : 'Select Invoice Attachment'}
-                  </span>
-                  <input
-                    type="file"
-                    ref={invoiceFileInput}
-                    required
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setInvoiceFile(e.target.files[0]);
-                      }
-                    }}
-                    className="hidden"
-                    accept=".pdf,.png,.jpg,.jpeg"
-                  />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Payment Due Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={entryForm.dueDate}
+                      onChange={(e) => handleEntryFieldChange('dueDate', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Entry item warranty lists */}
-              <div className="space-y-2.5">
+              {/* SECTION C: Itemsized Details list */}
+              <div className="border border-slate-200 rounded-2xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider">Acquired Assets Specifications</label>
+                  <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">C. Purchase Items Breakdowns</h4>
                   <button
                     type="button"
                     onClick={addEntryItem}
                     className="text-xs text-blue-600 hover:text-blue-505 font-bold cursor-pointer transition-colors"
                   >
-                    + Add Asset Row
+                    + Add Item Line
                   </button>
                 </div>
 
-                {entryForm.items.length > 0 && (
-                  <div className="hidden md:grid grid-cols-12 gap-3 px-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    <div className="col-span-5">Asset Specification Name</div>
-                    <div className="col-span-2">Quantity</div>
-                    <div className="col-span-2">Price ({currencySymbol})</div>
-                    <div className="col-span-3">Warranty (Months)</div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {entryForm.items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 border border-slate-200 p-2 rounded-xl relative items-center">
-                      <div className="md:col-span-5">
-                        <input
-                          type="text"
-                          required
-                          value={item.name}
-                          onChange={(e) => updateEntryItem(index, 'name', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          placeholder="Asset specification name"
-                        />
+                    <div key={index} className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3 relative">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                        <div className="md:col-span-5">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Item Specification Description</label>
+                          <input
+                            type="text"
+                            required
+                            value={item.name}
+                            onChange={(e) => updateEntryItem(index, 'name', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            placeholder="e.g. Dell Latitude 7420 Laptop"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Item Code</label>
+                          <input
+                            type="text"
+                            required
+                            value={item.code}
+                            onChange={(e) => updateEntryItem(index, 'code', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            placeholder="CODE-X"
+                          />
+                        </div>
+                        <div className="md:col-span-1.5 md:col-span-2">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Qty</label>
+                          <input
+                            type="number"
+                            required
+                            value={item.quantity}
+                            onChange={(e) => updateEntryItem(index, 'quantity', Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                          />
+                        </div>
+                        <div className="md:col-span-1">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Unit</label>
+                          <input
+                            type="text"
+                            required
+                            value={item.unit}
+                            onChange={(e) => updateEntryItem(index, 'unit', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            placeholder="Pcs"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Price/Unit</label>
+                          <input
+                            type="number"
+                            required
+                            value={item.price}
+                            onChange={(e) => updateEntryItem(index, 'price', Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                          />
+                        </div>
                       </div>
-                      <div className="md:col-span-2">
-                        <input
-                          type="number"
-                          required
-                          value={item.quantity}
-                          onChange={(e) => updateEntryItem(index, 'quantity', Number(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          placeholder="Qty"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <input
-                          type="number"
-                          required
-                          value={item.price}
-                          onChange={(e) => updateEntryItem(index, 'price', Number(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          placeholder="Price"
-                        />
-                      </div>
-                      <div className="md:col-span-3 flex items-center justify-between gap-2">
-                        <input
-                          type="number"
-                          required
-                          value={item.warrantyMonths}
-                          onChange={(e) => updateEntryItem(index, 'warrantyMonths', Number(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          placeholder="Warranty (Months)"
-                        />
-                        {entryForm.items.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => removeEntryItem(index)}
-                            className="text-red-500 hover:text-red-600 font-semibold cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-slate-200/60 items-center">
+                        <div className="md:col-span-3">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Discount Type</label>
+                          <select
+                            value={item.discountType}
+                            onChange={(e) => updateEntryItem(index, 'discountType', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-805 cursor-pointer"
                           >
-                            ✕
-                          </button>
-                        ) : (
-                          <div className="w-5" />
-                        )}
+                            <option value="percentage">Percentage (%)</option>
+                            <option value="amount">Fixed Amount</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Discount value</label>
+                          <input
+                            type="number"
+                            value={item.discountValue}
+                            onChange={(e) => updateEntryItem(index, 'discountValue', Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                          />
+                        </div>
+                        <div className="md:col-span-6 flex items-center justify-between gap-3 pt-4">
+                          <p className="text-[11px] font-semibold text-slate-500">
+                            Net Discount: <span className="font-extrabold text-red-600">₹{(item.discountAmount || 0).toLocaleString()}</span> • Total Item Amount: <span className="font-extrabold text-slate-800">₹{(item.totalItemAmount || 0).toLocaleString()}</span>
+                          </p>
+                          {entryForm.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEntryItem(index)}
+                              className="text-red-500 hover:text-red-650 font-semibold cursor-pointer p-1"
+                            >
+                              Remove Line
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* SECTION D: Additional Charges & Remarks */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">D. Additional Overhead Charges</h4>
+                  
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1">Transportation Charges</label>
+                      <input
+                        type="number"
+                        value={entryForm.transportationCharges}
+                        onChange={(e) => handleEntryFieldChange('transportationCharges', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1">Packing Charges</label>
+                      <input
+                        type="number"
+                        value={entryForm.packingCharges}
+                        onChange={(e) => handleEntryFieldChange('packingCharges', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1">Loading/Unloading Charges</label>
+                      <input
+                        type="number"
+                        value={entryForm.loadingUnloadingCharges}
+                        onChange={(e) => handleEntryFieldChange('loadingUnloadingCharges', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1">Other Charges</label>
+                      <input
+                        type="number"
+                        value={entryForm.otherCharges}
+                        onChange={(e) => handleEntryFieldChange('otherCharges', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                  <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">E. Document Bill Upload</h4>
+                  
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Supplier Invoice File Upload</label>
+                    <div
+                      onClick={() => invoiceFileInput.current.click()}
+                      className="w-full bg-white border border-dashed border-slate-300 hover:border-blue-500 rounded-xl py-4 flex items-center justify-center gap-3 cursor-pointer transition-all"
+                    >
+                      <FolderOpen className="text-blue-500" size={16} />
+                      <span className="text-xs font-semibold text-slate-600">
+                        {invoiceFile ? invoiceFile.name : (entryForm.invoiceUrl ? 'File already uploaded (Click to change)' : 'Select Invoice Attachment')}
+                      </span>
+                      <input
+                        type="file"
+                        ref={invoiceFileInput}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setInvoiceFile(e.target.files[0]);
+                          }
+                        }}
+                        className="hidden"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Remarks / Internal Audit Notes</label>
+                    <textarea
+                      rows="2"
+                      value={entryForm.notes}
+                      onChange={(e) => handleEntryFieldChange('notes', e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500"
+                      placeholder="Remarks..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION F: Payment Information with status selector */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">F. Payment Status & Mode Settings</h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Payment Status</label>
+                    <select
+                      value={entryForm.paymentStatus}
+                      onChange={(e) => handleEntryFieldChange('paymentStatus', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="Unpaid">Unpaid (Full Due)</option>
+                      <option value="Partial">Partial Down-payment</option>
+                      <option value="Paid">Fully Paid Settlement</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Payment Mode</label>
+                    <select
+                      value={entryForm.paymentMode}
+                      onChange={(e) => handleEntryFieldChange('paymentMode', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="Cash">Cash Handover</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="UPI">UPI Payment</option>
+                      <option value="Cheque">Bank Cheque</option>
+                      <option value="Credit">Credit Outstanding</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5">Paid Down Amount (₹)</label>
+                    <input
+                      type="number"
+                      disabled={entryForm.paymentStatus !== 'Partial'}
+                      value={entryForm.amountPaid}
+                      onChange={(e) => handleEntryFieldChange('amountPaid', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5">Ref Trans / Cheque Number</label>
+                    <input
+                      type="text"
+                      value={entryForm.paymentReferenceNumber}
+                      onChange={(e) => handleEntryFieldChange('paymentReferenceNumber', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      placeholder="e.g. TXN9934242"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION G: Summary details */}
+              <div className="bg-slate-900 text-slate-100 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Financial Voucher Summary</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Calculated in real-time under procurement accounting standards</p>
+                </div>
+                <div className="flex flex-wrap gap-6 text-xs text-slate-300">
+                  <p>Subtotal: <span className="font-extrabold text-slate-100">₹{entryForm.subTotal.toLocaleString()}</span></p>
+                  <p>Discount: <span className="font-extrabold text-red-400">-₹{entryForm.totalDiscount.toLocaleString()}</span></p>
+                  <p>Charges: <span className="font-extrabold text-slate-100">+₹{entryForm.additionalChargesTotal.toLocaleString()}</span></p>
+                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Grand Total: <span className="text-emerald-400">₹{entryForm.grandTotal.toLocaleString()}</span></p>
+                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Dues Pending: <span className="text-red-400">₹{Number(entryForm.amountDue).toLocaleString()}</span></p>
+                </div>
+              </div>
+
             </div>
 
-            {/* Sticky Footer */}
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
@@ -1337,7 +1831,7 @@ const Purchases = () => {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-all"
               >
-                {loading ? 'Uploading supporting assets files...' : 'Log Purchase Entry'}
+                {loading ? 'Processing ledger transactions...' : (isEditingEntry ? 'Save Changes' : 'Log Purchase Entry Voucher')}
               </button>
             </div>
           </form>
@@ -1401,14 +1895,14 @@ const Purchases = () => {
         return (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
             <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
-
+              
               {/* Close Button */}
               <button
                 onClick={() => {
                   setShowPoPreviewModal(false);
                   setSelectedPo(null);
                 }}
-                className="absolute top-6 right-6 text-slate-400 hover:text-slate-100 transition-colors cursor-pointer p-1.5 hover:bg-slate-800 rounded-lg"
+                className="absolute top-6 right-6 text-slate-400 hover:text-slate-105 transition-colors cursor-pointer p-1.5 hover:bg-slate-800 rounded-lg"
               >
                 <X size={20} />
               </button>
@@ -1427,7 +1921,7 @@ const Purchases = () => {
 
               {/* HIGH FIDELITY PAPER PO SHEET */}
               <div className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-10 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
-
+                
                 {/* Corporate Branding & Meta */}
                 <div className="flex flex-row justify-between items-start gap-4 pb-4 border-b border-slate-300">
                   <div className="flex items-center gap-3">
@@ -1458,7 +1952,7 @@ const Purchases = () => {
 
                 {/* Title */}
                 <h1 className="text-xl font-extrabold text-[#002e6e] text-center uppercase tracking-wide my-2 select-none decoration-double underline">
-                  PURCHASE ORDER
+                  PURCHASE VOUCHER
                 </h1>
 
                 {/* Vendor & Biller Address Sheets */}
@@ -1472,6 +1966,10 @@ const Purchases = () => {
                     <p><span className="text-slate-500 font-semibold select-none">Phone:</span> {selectedPo.vendor?.phone || 'N/A'}</p>
                     <p><span className="text-slate-500 font-semibold select-none">GSTIN:</span> {selectedPo.vendor?.gstNumber || 'N/A'}</p>
                     <p><span className="text-slate-500 font-semibold select-none">Address:</span> {selectedPo.vendor?.address || 'N/A'}</p>
+                    <p><span className="text-slate-500 font-semibold select-none">Invoice Number:</span> <span className="font-bold">{(() => {
+                      const linkedEntry = entries.find(e => (e.poRef?._id || e.poRef) === selectedPo._id);
+                      return linkedEntry ? linkedEntry.invoiceNumber : (selectedPo.invoiceNumber || 'N/A');
+                    })()}</span></p>
                   </div>
 
                   {/* Corporate headquarters */}
@@ -1504,15 +2002,15 @@ const Purchases = () => {
                         const price = item.price || 0;
                         const taxRate = item.taxRate || 18;
                         const rowTotal = qty * price;
-
+                        
                         return (
                           <tr key={index} className="border-b border-slate-200">
                             <td className="border-r border-black p-2 text-center">{index + 1}</td>
                             <td className="border-r border-black p-2 text-left font-medium">{item.name}</td>
                             <td className="border-r border-black p-2 text-center">{qty}</td>
-                            <td className="border-r border-black p-2 text-right">₹{price.toFixed(2)}</td>
+                            <td className="border-r border-black p-2 text-right">₹{price.toLocaleString()}</td>
                             <td className="border-r border-black p-2 text-center">{taxRate}%</td>
-                            <td className="p-2 text-right font-semibold">₹{rowTotal.toFixed(2)}</td>
+                            <td className="p-2 text-right font-semibold">₹{rowTotal.toLocaleString()}</td>
                           </tr>
                         );
                       })}
@@ -1522,20 +2020,20 @@ const Purchases = () => {
                         <td colSpan="3" className="border-r border-black p-2 bg-[#fcfbf9]"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right font-bold uppercase select-none">Subtotal:</td>
                         <td className="p-2 text-right font-semibold">
-                          ₹{(selectedPo.totalAmount - (selectedPo.taxAmount || 0)).toFixed(2)}
+                          ₹{(selectedPo.totalAmount - (selectedPo.taxAmount || 0)).toLocaleString()}
                         </td>
                       </tr>
                       <tr className="border-t border-slate-300 h-8 text-[9.5px]">
                         <td colSpan="3" className="border-r border-black p-2 bg-[#fcfbf9]"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right font-bold uppercase select-none">Tax (GST Amt):</td>
                         <td className="p-2 text-right font-semibold">
-                          ₹{(selectedPo.taxAmount || 0).toFixed(2)}
+                          ₹{(selectedPo.taxAmount || 0).toLocaleString()}
                         </td>
                       </tr>
                       <tr className="bg-[#e8e5d3] font-bold border-t border-black h-8 text-black text-[10px]">
                         <td colSpan="3" className="border-r border-black p-2"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right uppercase tracking-wider select-none">Grand Total Cost:</td>
-                        <td className="p-2 text-right">₹{selectedPo.totalAmount.toFixed(2)}</td>
+                        <td className="p-2 text-right">₹{selectedPo.totalAmount.toLocaleString()}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1557,7 +2055,7 @@ const Purchases = () => {
                       </div>
                     )}
                   </div>
-
+                  
                   <div className="md:col-span-5 flex flex-col justify-end space-y-1 pl-4 border-l border-slate-200">
                     <p className="text-slate-500 font-bold uppercase select-none mb-1">Corporate Authorizations</p>
                     <p className="text-[#333333]"><span className="text-slate-400 select-none">Authorized Signatory:</span> Chief Procurement Officer</p>
@@ -1576,7 +2074,7 @@ const Purchases = () => {
                     setShowPoPreviewModal(false);
                     setSelectedPo(null);
                   }}
-                  className="px-5 py-2.5 rounded-xl border border-slate-855 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold cursor-pointer transition-colors"
+                  className="px-5 py-2.5 rounded-xl border border-slate-855 hover:bg-slate-800 text-slate-400 hover:text-slate-250 text-xs font-semibold cursor-pointer transition-colors"
                 >
                   Close Preview
                 </button>
@@ -1597,7 +2095,6 @@ const Purchases = () => {
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
             <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
 
-              {/* Close Button */}
               <button
                 onClick={() => {
                   setShowEntryPreviewModal(false);
@@ -1608,7 +2105,6 @@ const Purchases = () => {
                 <X size={20} />
               </button>
 
-              {/* Header info */}
               <div className="pb-6 mb-6 border-b border-slate-800/80">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -1620,7 +2116,6 @@ const Purchases = () => {
                 </h3>
               </div>
 
-              {/* SPLIT PANEL LAYOUT: LEFT SIDE FOR SPECS, RIGHT SIDE FOR INVOICE PDF */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
 
                 {/* LEFT SIDE: ASSETS SPECS AND AUDIT INFORMATION */}
@@ -1632,28 +2127,33 @@ const Purchases = () => {
 
                     <div className="grid grid-cols-2 gap-4 text-xs">
                       <div>
-                        <p className="text-slate-500 font-medium">Invoice Number</p>
-                        <p className="font-extrabold text-slate-200 mt-0.5">#{selectedEntry.invoiceNumber}</p>
+                        <p className="text-slate-500 font-medium">Voucher Number</p>
+                        <p className="font-extrabold text-blue-400 mt-0.5">{selectedEntry.purchaseVoucherNumber || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-medium">Voucher Date</p>
+                        <p className="font-extrabold text-slate-200 mt-0.5">
+                          {selectedEntry.purchaseDate ? new Date(selectedEntry.purchaseDate).toLocaleDateString('en-GB') : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-medium">Supplier Reference Invoice</p>
+                        <p className="font-extrabold text-slate-200 mt-0.5">#{selectedEntry.invoiceNumber} ({selectedEntry.invoiceDate ? new Date(selectedEntry.invoiceDate).toLocaleDateString('en-GB') : 'N/A'})</p>
                       </div>
                       <div>
                         <p className="text-slate-500 font-medium">Company Profile</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {activeCompany.logoSquareUrl ? (
-                            <div className="w-5 h-5 bg-white rounded flex items-center justify-center overflow-hidden border border-slate-700 p-0.5">
-                              <img src={`http://localhost:5000${activeCompany.logoSquareUrl}`} alt="Logo Icon" className="max-w-full max-h-full object-contain" />
-                            </div>
-                          ) : (
-                            <div className="relative w-4 h-4 bg-blue-600 rounded flex items-center justify-center font-black text-white text-[8px] select-none">
-                              {(activeCompany.companyName || 'M')[0]}
-                            </div>
-                          )}
-                          <span className="font-extrabold text-slate-200">{activeCompany.companyName || 'N/A'}</span>
-                        </div>
+                        <p className="font-extrabold text-slate-200 mt-0.5">{activeCompany.companyName || 'N/A'}</p>
                       </div>
                       <div>
-                        <p className="text-slate-500 font-medium">Supplier Vendor</p>
-                        <p className="font-extrabold text-slate-200 mt-0.5">{selectedEntry.vendor?.name || 'N/A'}</p>
+                        <p className="text-slate-500 font-medium">Supplier Name</p>
+                        <p className="font-extrabold text-slate-200 mt-0.5">{selectedEntry.supplierName || selectedEntry.vendor?.name || 'N/A'}</p>
                       </div>
+                      {selectedEntry.supplierGSTIN && (
+                        <div>
+                          <p className="text-slate-500 font-medium">Supplier GSTIN</p>
+                          <p className="font-extrabold text-slate-200 mt-0.5">{selectedEntry.supplierGSTIN}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-slate-500 font-medium">Linked PO Reference</p>
                         <p className="font-semibold text-blue-400 mt-0.5">{selectedEntry.poRef?.poNumber || 'Direct Purchase / No PO'}</p>
@@ -1674,30 +2174,48 @@ const Purchases = () => {
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Total Bill Amt</p>
-                        <p className="font-black text-slate-100 text-sm mt-1">₹{selectedEntry.totalAmount.toLocaleString()}</p>
+                        <p className="font-black text-slate-100 text-sm mt-1">₹{(selectedEntry.grandTotal || selectedEntry.totalAmount || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Paid amount</p>
-                        <p className="font-black text-emerald-400 text-sm mt-1">₹{selectedEntry.amountPaid.toLocaleString()}</p>
+                        <p className="font-black text-emerald-400 text-sm mt-1">₹{(selectedEntry.amountPaid || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Outstanding</p>
                         <p className={`font-black text-sm mt-1 ${selectedEntry.amountDue > 0 ? 'text-red-400' : 'text-emerald-450'}`}>
-                          ₹{selectedEntry.amountDue.toLocaleString()}
+                          ₹{(selectedEntry.amountDue || 0).toLocaleString()}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs pt-2">
-                      <span className="text-slate-500 font-medium">Ledger Status:</span>
-                      <span className={`inline-flex text-[10px] font-black px-2.5 py-0.5 rounded-full border ${selectedEntry.paymentStatus === 'Paid'
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : selectedEntry.paymentStatus === 'Partial'
-                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                        }`}>
-                        {selectedEntry.paymentStatus}
-                      </span>
+                    <div className="space-y-2 text-xs pt-2 text-slate-400">
+                      <div className="flex justify-between">
+                        <span>Payment Status:</span>
+                        <span className={`inline-flex text-[9px] font-black px-2 py-0.5 rounded-full border ${selectedEntry.paymentStatus === 'Paid'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : selectedEntry.paymentStatus === 'Partial'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                          }`}>
+                          {selectedEntry.paymentStatus}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Payment Mode:</span>
+                        <span className="font-bold text-slate-200">{selectedEntry.paymentMode || 'Cash'}</span>
+                      </div>
+                      {selectedEntry.paymentReferenceNumber && (
+                        <div className="flex justify-between">
+                          <span>Ref Reference Number:</span>
+                          <span className="font-mono text-slate-200">{selectedEntry.paymentReferenceNumber}</span>
+                        </div>
+                      )}
+                      {(selectedEntry.additionalChargesTotal > 0) && (
+                        <div className="flex justify-between border-t border-slate-850 pt-2">
+                          <span>Additional Charges total:</span>
+                          <span className="font-bold text-slate-200">₹{selectedEntry.additionalChargesTotal.toLocaleString()}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1709,24 +2227,31 @@ const Purchases = () => {
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="bg-slate-900 text-[10px] font-bold text-slate-400 border-b border-slate-800 uppercase tracking-wider">
-                            <th className="p-3">Asset Spec Name</th>
-                            <th className="p-3 text-center">Qty</th>
+                            <th className="p-3">Asset Spec Name & Code</th>
+                            <th className="p-3 text-center">Qty & Unit</th>
                             <th className="p-3 text-right">Unit Price</th>
-                            <th className="p-3 text-center">Warranty</th>
+                            <th className="p-3 text-right">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-855 text-slate-200">
                           {(selectedEntry.items || []).map((item, index) => {
-                            const warranty = item.warrantyMonths || 0;
                             return (
                               <tr key={index} className="hover:bg-slate-900/40">
-                                <td className="p-3 font-semibold text-slate-250 leading-tight">{item.name}</td>
-                                <td className="p-3 text-center font-bold text-slate-350">{item.quantity}</td>
-                                <td className="p-3 text-right font-bold text-slate-100">₹{item.price.toLocaleString()}</td>
-                                <td className="p-3 text-center">
-                                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black ${warranty < 12 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
-                                    {warranty} M
-                                  </span>
+                                <td className="p-3 leading-tight">
+                                  <p className="font-semibold text-slate-250">{item.name}</p>
+                                  <p className="text-[9px] text-slate-500 font-mono mt-0.5">Code: {item.code || 'N/A'}</p>
+                                </td>
+                                <td className="p-3 text-center font-bold text-slate-350">
+                                  {item.quantity} {item.unit || 'Pcs'}
+                                </td>
+                                <td className="p-3 text-right font-bold text-slate-100">
+                                  <p>₹{item.price.toLocaleString()}</p>
+                                  {item.discountValue > 0 && (
+                                    <p className="text-[9px] text-red-400 font-normal">Discount: -₹{item.discountAmount?.toLocaleString()}</p>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right font-black text-slate-100">
+                                  ₹{item.totalItemAmount?.toLocaleString()}
                                 </td>
                               </tr>
                             );
@@ -1756,7 +2281,7 @@ const Purchases = () => {
                     )}
                   </div>
 
-                  <div className="flex-1 min-h-[400px] bg-slate-950 rounded-2xl overflow-hidden border border-slate-850 flex items-center justify-center relative shadow-md">
+                  <div className="flex-1 min-h-[400px] bg-slate-955 rounded-2xl overflow-hidden border border-slate-850 flex items-center justify-center relative shadow-md">
                     {selectedEntry.invoiceUrl ? (
                       selectedEntry.invoiceUrl.toLowerCase().endsWith('.pdf') ? (
                         <iframe
@@ -1781,14 +2306,13 @@ const Purchases = () => {
 
               </div>
 
-              {/* Footer Buttons */}
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-800/80">
                 <button
                   onClick={() => {
                     setShowEntryPreviewModal(false);
                     setSelectedEntry(null);
                   }}
-                  className="px-5 py-2.5 rounded-xl border border-slate-850 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold cursor-pointer transition-colors"
+                  className="px-5 py-2.5 rounded-xl border border-slate-855 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold cursor-pointer transition-colors animate-fade-in"
                 >
                   Close Specs Auditor
                 </button>
@@ -1798,6 +2322,111 @@ const Purchases = () => {
           </div>
         );
       })()}
+
+      {/* ================= MODAL: SUPPLIER AUDIT LEDGER TRANSACTION STATEMENT ================= */}
+      {showLedgerModal && selectedVendorForLedger && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
+          <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
+
+            <button
+              onClick={() => {
+                setShowLedgerModal(false);
+                setSelectedVendorForLedger(null);
+                setLedgerData([]);
+              }}
+              className="absolute top-6 right-6 text-slate-400 hover:text-slate-100 transition-colors cursor-pointer p-1.5 hover:bg-slate-800 rounded-lg animate-fade-in"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="pb-4 mb-6 border-b border-slate-800/80">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse"></span>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">REAL-TIME DOUBLE-ENTRY GENERAL LEDGER AUDITOR</span>
+              </div>
+              <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                <BookOpen size={18} className="text-blue-500" />
+                Supplier Audit Ledger: {selectedVendorForLedger.name}
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-1 font-semibold">GSTIN: {selectedVendorForLedger.gstNumber || 'N/A'} • Address: {selectedVendorForLedger.address || 'N/A'}</p>
+            </div>
+
+            {ledgerLoading ? (
+              <div className="text-slate-500 text-center py-16">
+                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4 font-bold"></div>
+                <p className="text-xs font-bold tracking-wide text-slate-500 mt-2">Reassembling supplier ledger transactions...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="overflow-hidden border border-slate-800 rounded-2xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-950 text-[10px] font-bold text-slate-400 border-b border-slate-800 uppercase tracking-wider">
+                        <th className="p-3.5">Transaction Date</th>
+                        <th className="p-3.5">Voucher Reference</th>
+                        <th className="p-3.5">Description</th>
+                        <th className="p-3.5 text-right">Debit (Payments Out)</th>
+                        <th className="p-3.5 text-right">Credit (Purchases In)</th>
+                        <th className="p-3.5 text-right bg-slate-950/80">Running Balance (Owed)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-855 text-slate-200">
+                      {ledgerData.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" className="text-center py-12 text-slate-500 font-bold">
+                            No ledger transactions logged yet for this vendor partner.
+                          </td>
+                        </tr>
+                      ) : (
+                        ledgerData.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-900/30">
+                            <td className="p-3.5 font-semibold text-slate-350">
+                              {new Date(item.date).toLocaleDateString('en-GB')}
+                            </td>
+                            <td className="p-3.5 font-bold text-blue-450">{item.voucherNo}</td>
+                            <td className="p-3.5 text-slate-400 font-medium">{item.notes}</td>
+                            <td className="p-3.5 text-right font-extrabold text-emerald-450">
+                              {item.debit > 0 ? `₹${item.debit.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="p-3.5 text-right font-extrabold text-red-400">
+                              {item.credit > 0 ? `₹${item.credit.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="p-3.5 text-right font-black text-slate-100 bg-slate-950/40">
+                              ₹{item.balance.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="bg-slate-950/50 border border-slate-850 p-4 rounded-2xl flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-bold">CURRENT TOTAL OUTSTANDING LIABILITY</span>
+                  <span className="text-sm font-black text-red-400">
+                    ₹{(ledgerData[ledgerData.length - 1]?.balance || 0).toLocaleString()}/-
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800/80">
+              <button
+                onClick={() => {
+                  setShowLedgerModal(false);
+                  setSelectedVendorForLedger(null);
+                  setLedgerData([]);
+                }}
+                className="px-5 py-2.5 rounded-xl border border-slate-850 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                Close Statement
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

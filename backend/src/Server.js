@@ -13,6 +13,8 @@ import purchaseEntryRoutes from './routes/purchaseEntryRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
+import accountingRoutes from './routes/accountingRoutes.js';
+
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -41,6 +43,8 @@ app.use('/api/purchase-entries', purchaseEntryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/accounting', accountingRoutes);
+
 
 app.get('/', (req, res) => {
   res.send('API is running...');

@@ -192,6 +192,98 @@ export const deleteInvoice = asyncHandler(async (req, res) => {
   res.json({ message: 'Invoice removed successfully' });
 });
 
+// @desc    Update an existing Sales Invoice
+// @route   PUT /api/invoices/:id
+// @access  Private (Manager/Admin)
+export const updateInvoice = asyncHandler(async (req, res) => {
+  const {
+    customerName,
+    customerCompany,
+    customerPhone,
+    customerEmail,
+    customerAddress,
+    customerGst,
+    items,
+    discountAmount,
+    dueDate,
+    amountPaid,
+    paymentStatus,
+    companyId,
+  } = req.body;
+
+  const invoice = await SaleInvoice.findById(req.params.id);
+  if (!invoice) {
+    res.status(404);
+    throw new Error('Invoice not found');
+  }
+
+  if (customerName !== undefined) invoice.customerName = customerName;
+  if (customerCompany !== undefined) invoice.customerCompany = customerCompany;
+  if (customerPhone !== undefined) invoice.customerPhone = customerPhone;
+  if (customerEmail !== undefined) invoice.customerEmail = customerEmail;
+  if (customerAddress !== undefined) invoice.customerAddress = customerAddress;
+  if (customerGst !== undefined) invoice.customerGst = customerGst;
+  if (dueDate !== undefined) invoice.dueDate = dueDate;
+  if (companyId !== undefined) invoice.companyId = companyId;
+
+  if (items !== undefined) {
+    let parsedItems = items;
+    if (typeof items === 'string') {
+      parsedItems = JSON.parse(items);
+    }
+    invoice.items = parsedItems;
+  }
+
+  // Recalculate totals
+  let calculatedDiscount = Number(discountAmount !== undefined ? discountAmount : invoice.discountAmount || 0);
+  let calculatedTax = 0;
+  let netTotal = 0;
+
+  invoice.items.forEach((item) => {
+    const itemSubtotal = item.quantity * item.price;
+    const itemDiscount = item.discount || 0;
+    const itemNet = itemSubtotal - itemDiscount;
+    const itemTax = itemNet * ((item.taxRate || 18) / 100);
+    netTotal += itemNet;
+    calculatedTax += itemTax;
+  });
+
+  invoice.taxAmount = calculatedTax;
+  invoice.discountAmount = calculatedDiscount;
+  invoice.totalAmount = netTotal + calculatedTax;
+
+  if (amountPaid !== undefined) {
+    invoice.amountPaid = Number(amountPaid);
+  }
+  invoice.amountDue = invoice.totalAmount - invoice.amountPaid;
+
+  if (paymentStatus !== undefined) {
+    invoice.paymentStatus = paymentStatus;
+  } else {
+    if (invoice.amountPaid >= invoice.totalAmount) {
+      invoice.paymentStatus = 'Paid';
+    } else if (invoice.amountPaid > 0) {
+      invoice.paymentStatus = 'Partial';
+    } else {
+      invoice.paymentStatus = 'Pending';
+    }
+  }
+
+  const updatedInvoice = await invoice.save();
+
+  // Regenerate PDF
+  try {
+    const pdfUrl = await generateSalesInvoicePDF(updatedInvoice);
+    updatedInvoice.pdfUrl = pdfUrl;
+    await updatedInvoice.save();
+  } catch (pdfErr) {
+    console.error('Error generating sales PDF on edit:', pdfErr);
+  }
+
+  res.json(updatedInvoice);
+});
+
+
 // =============================================
 // DOWNLOAD endpoint (Word / PDF)
 // =============================================

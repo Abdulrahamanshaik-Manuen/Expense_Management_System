@@ -11,7 +11,8 @@ import {
   Eye,
   X,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Edit
 } from 'lucide-react';
 
 /** Indian Currency Number-to-Words */
@@ -84,6 +85,8 @@ const Expenses = () => {
   // Modals / Form toggles
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   // Document Viewer Modal State
   const [showDocViewer, setShowDocViewer] = useState(false);
@@ -161,6 +164,42 @@ const Expenses = () => {
     }
   };
 
+  const handleEditExpense = (exp) => {
+    setIsEditing(true);
+    setEditingId(exp._id);
+    setExpenseForm({
+      title: exp.title || '',
+      amount: exp.amount || '',
+      category: exp.category?._id || exp.category || '',
+      date: exp.date ? new Date(exp.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      paymentMethod: exp.paymentMethod || 'Cash',
+      paidTo: exp.paidTo || '',
+      notes: exp.notes || '',
+      paymentStatus: exp.paymentStatus || 'Pending',
+      companyId: exp.companyId?._id || exp.companyId || '',
+    });
+    setReceiptFile(null);
+    setShowAddExpense(true);
+  };
+
+  const closeExpenseModal = () => {
+    setShowAddExpense(false);
+    setIsEditing(false);
+    setEditingId(null);
+    setExpenseForm({
+      title: '',
+      amount: '',
+      category: categories[0]?._id || '',
+      date: new Date().toISOString().slice(0, 10),
+      paymentMethod: 'Cash',
+      paidTo: '',
+      notes: '',
+      paymentStatus: 'Pending',
+      companyId: companyProfiles[0]?._id || '',
+    });
+    setReceiptFile(null);
+  };
+
   // Submit dynamic expense
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
@@ -189,9 +228,15 @@ const Expenses = () => {
         data.append('receipt', receiptFile);
       }
 
-      await API.post('/expenses', data, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      if (isEditing) {
+        await API.put(`/expenses/${editingId}`, data, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        await API.post('/expenses', data, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
 
       // Clear Form & Close Modal
       setExpenseForm({
@@ -206,6 +251,8 @@ const Expenses = () => {
         companyId: companyProfiles[0]?._id || '',
       });
       setReceiptFile(null);
+      setIsEditing(false);
+      setEditingId(null);
       setShowAddExpense(false);
       fetchData();
     } catch (err) {
@@ -459,6 +506,15 @@ const Expenses = () => {
                             {exp.paymentStatus === 'Paid' ? 'Paid' : 'Mark Paid'}
                           </button>
 
+                          {/* Edit */}
+                          <button
+                            onClick={() => handleEditExpense(exp)}
+                            className="p-1.5 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-blue-200"
+                            title="Edit Record"
+                          >
+                            <Edit size={14} />
+                          </button>
+
                           {/* Delete */}
                           <button
                             onClick={() => handleDeleteExpense(exp._id)}
@@ -551,10 +607,10 @@ const Expenses = () => {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
-              <h3 className="text-base font-bold text-slate-900">Add Expense</h3>
+              <h3 className="text-base font-bold text-slate-900">{isEditing ? 'Edit Expense' : 'Add Expense'}</h3>
               <button
                 type="button"
-                onClick={() => setShowAddExpense(false)}
+                onClick={closeExpenseModal}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 ✕
@@ -727,7 +783,7 @@ const Expenses = () => {
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
-                onClick={() => setShowAddExpense(false)}
+                onClick={closeExpenseModal}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all"
               >
                 Cancel
@@ -737,7 +793,7 @@ const Expenses = () => {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-colors"
               >
-                {loading ? 'Submitting Registry...' : 'Provision Log'}
+                {loading ? 'Saving Changes...' : (isEditing ? 'Save Changes' : 'Provision Log')}
               </button>
             </div>
           </form>

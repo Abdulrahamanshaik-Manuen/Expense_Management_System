@@ -161,3 +161,72 @@ export const downloadPurchaseOrder = asyncHandler(async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(buffer);
 });
+
+// @desc    Update a Purchase Order
+// @route   PUT /api/purchase-orders/:id
+// @access  Private (Admin Only)
+export const updatePurchaseOrder = asyncHandler(async (req, res) => {
+  const { vendor: vendorId, items, companyId, status } = req.body;
+
+  const po = await PurchaseOrder.findById(req.params.id);
+  if (!po) {
+    res.status(404);
+    throw new Error('Purchase Order not found');
+  }
+
+  if (vendorId !== undefined) {
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      res.status(404);
+      throw new Error('Vendor not found');
+    }
+    po.vendor = vendorId;
+  }
+
+  if (companyId !== undefined) {
+    po.companyId = companyId;
+  }
+
+  if (status !== undefined) {
+    po.status = status;
+  }
+
+  if (items !== undefined) {
+    po.items = items;
+  }
+
+  // Calculate subtotal, tax amount, and total amount
+  let subtotal = 0;
+  let taxAmount = 0;
+
+  po.items.forEach((item) => {
+    const itemSubtotal = item.quantity * item.price;
+    const itemTax = itemSubtotal * ((item.taxRate || 18) / 100);
+    subtotal += itemSubtotal;
+    taxAmount += itemTax;
+  });
+
+  po.taxAmount = taxAmount;
+  po.totalAmount = subtotal + taxAmount;
+
+  // Generate the PDF
+  const updatedVendor = await Vendor.findById(po.vendor);
+  const pdfUrl = await generatePOInvoice(po, updatedVendor);
+  po.pdfUrl = pdfUrl;
+
+  const updatedPO = await po.save();
+  res.json(updatedPO);
+});
+
+// @desc    Delete a Purchase Order
+// @route   DELETE /api/purchase-orders/:id
+// @access  Private (Admin Only)
+export const deletePurchaseOrder = asyncHandler(async (req, res) => {
+  const po = await PurchaseOrder.findById(req.params.id);
+  if (!po) {
+    res.status(404);
+    throw new Error('Purchase Order not found');
+  }
+  await po.deleteOne();
+  res.json({ message: 'Purchase Order removed successfully' });
+});

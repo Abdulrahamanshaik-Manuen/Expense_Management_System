@@ -15,7 +15,8 @@ import {
   Download,
   X,
   Eye,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Edit
 } from 'lucide-react';
 
 /** Indian Currency Number-to-Words */
@@ -99,6 +100,8 @@ const Sales = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
 
   // Form states
@@ -242,7 +245,11 @@ const Sales = () => {
     e.preventDefault();
     try {
       setLoading(true);
-      await API.post('/invoices', invoiceForm);
+      if (isEditing) {
+        await API.put(`/invoices/${editingId}`, invoiceForm);
+      } else {
+        await API.post('/invoices', invoiceForm);
+      }
       setInvoiceForm({
         customerName: '',
         customerCompany: '',
@@ -254,6 +261,8 @@ const Sales = () => {
         companyId: companyProfiles[0]?._id || '',
         items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
       });
+      setIsEditing(false);
+      setEditingId(null);
       setShowAddInvoice(false);
       fetchData();
     } catch (err) {
@@ -261,6 +270,61 @@ const Sales = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditInvoice = (inv) => {
+    setIsEditing(true);
+    setEditingId(inv._id);
+    setInvoiceForm({
+      customerName: inv.customerName || '',
+      customerCompany: inv.customerCompany || '',
+      customerPhone: inv.customerPhone || '',
+      customerEmail: inv.customerEmail || '',
+      customerAddress: inv.customerAddress || '',
+      customerGst: inv.customerGst || '',
+      amountPaid: inv.amountPaid !== undefined ? inv.amountPaid.toString() : '0',
+      companyId: inv.companyId?._id || inv.companyId || companyProfiles[0]?._id || '',
+      items: inv.items && inv.items.length > 0
+        ? inv.items.map(item => ({
+            name: item.name || item.description || '',
+            quantity: item.quantity || 1,
+            price: item.price || item.unitPrice || '',
+            discount: item.discount || 0,
+            taxRate: item.taxRate !== undefined ? item.taxRate : 18
+          }))
+        : [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }]
+    });
+    setShowAddInvoice(true);
+  };
+
+  const handleDeleteInvoice = async (invId) => {
+    if (!window.confirm('Are you sure you want to delete this invoice permanently?')) return;
+    try {
+      setLoading(true);
+      await API.delete(`/invoices/${invId}`);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error deleting invoice.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeInvoiceModal = () => {
+    setShowAddInvoice(false);
+    setIsEditing(false);
+    setEditingId(null);
+    setInvoiceForm({
+      customerName: '',
+      customerCompany: '',
+      customerPhone: '',
+      customerEmail: '',
+      customerAddress: '',
+      customerGst: '',
+      amountPaid: '0',
+      companyId: companyProfiles[0]?._id || '',
+      items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
+    });
   };
 
   // Log payment receipts against invoice dues
@@ -303,7 +367,22 @@ const Sales = () => {
         <div>
           {activeTab === 'invoices' && (
             <button
-              onClick={() => setShowAddInvoice(true)}
+              onClick={() => {
+                setIsEditing(false);
+                setEditingId(null);
+                setInvoiceForm({
+                  customerName: '',
+                  customerCompany: '',
+                  customerPhone: '',
+                  customerEmail: '',
+                  customerAddress: '',
+                  customerGst: '',
+                  amountPaid: '0',
+                  companyId: companyProfiles[0]?._id || '',
+                  items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
+                });
+                setShowAddInvoice(true);
+              }}
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-semibold text-xs transition-all cursor-pointer shadow-lg shadow-blue-500/10"
             >
               <Plus size={16} /> Create Invoice
@@ -448,6 +527,22 @@ const Sales = () => {
                             View
                           </button>
                           <button
+                            onClick={() => handleEditInvoice(inv)}
+                            className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-650 px-2.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                            title="Edit Invoice"
+                          >
+                            <Edit size={13} className="text-blue-500" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteInvoice(inv._id)}
+                            className="inline-flex items-center gap-1 bg-white hover:bg-slate-55 border border-slate-200 text-red-650 px-2.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
+                            title="Delete Invoice"
+                          >
+                            <Trash size={13} className="text-red-500" />
+                            Delete
+                          </button>
+                          <button
                             onClick={() => {
                               setSelectedInvoiceForExport(inv);
                               setSelectedCompanyId(inv.companyId?._id || inv.companyId || companyProfiles[0]?._id || '');
@@ -455,7 +550,7 @@ const Sales = () => {
                             }}
                             className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer"
                           >
-                            <FileText size={14} /> Export / Download
+                            <FileText size={14} /> Export
                           </button>
                         </div>
                       </td>
@@ -633,10 +728,10 @@ const Sales = () => {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
-              <h3 className="text-base font-bold text-slate-900">Draw Tax Sale Invoice</h3>
+              <h3 className="text-base font-bold text-slate-900">{isEditing ? 'Edit Tax Sale Invoice' : 'Draw Tax Sale Invoice'}</h3>
               <button
                 type="button"
-                onClick={() => setShowAddInvoice(false)}
+                onClick={closeInvoiceModal}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
               >
                 ✕
@@ -886,7 +981,7 @@ const Sales = () => {
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
-                onClick={() => setShowAddInvoice(false)}
+                onClick={closeInvoiceModal}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 text-xs font-semibold cursor-pointer transition-all"
               >
                 Cancel
@@ -896,7 +991,7 @@ const Sales = () => {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-all"
               >
-                {loading ? 'Compiling corporate PDF...' : 'Get Invoice'}
+                {loading ? (isEditing ? 'Saving Changes...' : 'Compiling corporate PDF...') : (isEditing ? 'Save Changes' : 'Get Invoice')}
               </button>
             </div>
           </form>

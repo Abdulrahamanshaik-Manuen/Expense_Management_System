@@ -75,11 +75,11 @@ export async function generateInvoiceBuffer(invoice, format) {
   const formattedDate = new Date(invoice.date || invoice.invoiceDate || Date.now()).toLocaleDateString('en-GB');
 
   const totalAmountVal = Number(invoice.totalAmount) || 0;
-  const taxAmountVal   = Number(invoice.taxAmount)   || (totalAmountVal * 18 / 118);
-  const cgstVal        = taxAmountVal / 2;
-  const sgstVal        = taxAmountVal / 2;
-  const baseAmountVal  = totalAmountVal - taxAmountVal;
-  const totalQuantity  = (invoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const taxAmountVal = Number(invoice.taxAmount) || (totalAmountVal * 18 / 118);
+  const cgstVal = taxAmountVal / 2;
+  const sgstVal = taxAmountVal / 2;
+  const baseAmountVal = totalAmountVal - taxAmountVal;
+  const totalQuantity = (invoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
 
   // ── DOCX ──────────────────────────────────────────────────
   if (format === 'docx') {
@@ -105,24 +105,32 @@ export async function generateInvoiceBuffer(invoice, format) {
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'FROM', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'BILL TO', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-              ]}),
-              new TableRow({ children: [
-                new TableCell({ children: [
-                  new Paragraph({ children: [new TextRun({ text: settings.companyName, bold: true })] }),
-                  new Paragraph({ text: settings.address }),
-                  new Paragraph({ text: `Mobile: ${settings.mobile}` }),
-                  new Paragraph({ text: `GST No: ${settings.gstNumber}` }),
-                ]}),
-                new TableCell({ children: [
-                  new Paragraph({ children: [new TextRun({ text: (invoice.customerName || invoice.client || 'N/A').toUpperCase(), bold: true })] }),
-                  new Paragraph({ text: invoice.customerAddress || 'N/A' }),
-                  new Paragraph({ text: `GST NO: ${invoice.customerGst || 'N/A'}` }),
-                  new Paragraph({ text: `Phone: ${invoice.customerPhone || 'N/A'}` }),
-                ]}),
-              ]}),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'FROM', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'BILL TO', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                ]
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({
+                    children: [
+                      new Paragraph({ children: [new TextRun({ text: settings.companyName, bold: true })] }),
+                      new Paragraph({ text: settings.address }),
+                      new Paragraph({ text: `Mobile: ${settings.mobile}` }),
+                      new Paragraph({ text: `GST No: ${settings.gstNumber}` }),
+                    ]
+                  }),
+                  new TableCell({
+                    children: [
+                      new Paragraph({ children: [new TextRun({ text: (invoice.customerName || invoice.client || 'N/A').toUpperCase(), bold: true })] }),
+                      new Paragraph({ text: invoice.customerAddress || 'N/A' }),
+                      new Paragraph({ text: `GST NO: ${invoice.customerGst || 'N/A'}` }),
+                      new Paragraph({ text: `Phone: ${invoice.customerPhone || 'N/A'}` }),
+                    ]
+                  }),
+                ]
+              }),
             ],
           }),
           new Paragraph({ text: '' }),
@@ -131,43 +139,53 @@ export async function generateInvoiceBuffer(invoice, format) {
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'S NO', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Description of Services', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'HSN Code', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Quantity', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Amount', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-              ]}),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'S NO', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Description of Services', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'HSN Code', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Quantity', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Amount', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                ]
+              }),
               ...(invoice.items || []).map((item, idx) =>
-                new TableRow({ children: [
-                  new TableCell({ children: [new Paragraph(String(idx + 1))] }),
-                  new TableCell({ children: [new Paragraph(item.description || item.name || 'Item')] }),
-                  new TableCell({ children: [new Paragraph(settings.defaultHsnCode)] }),
-                  new TableCell({ children: [new Paragraph(`${item.quantity} Months`)] }),
-                  new TableCell({ children: [new Paragraph(`${Number(item.total).toLocaleString()}/-`)] }),
-                ]}),
+                new TableRow({
+                  children: [
+                    new TableCell({ children: [new Paragraph(String(idx + 1))] }),
+                    new TableCell({ children: [new Paragraph(item.description || item.name || 'Item')] }),
+                    new TableCell({ children: [new Paragraph(settings.defaultHsnCode)] }),
+                    new TableCell({ children: [new Paragraph(`${item.quantity} Months`)] }),
+                    new TableCell({ children: [new Paragraph(`${Number(item.total).toLocaleString()}/-`)] }),
+                  ]
+                }),
               ),
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph('CGST (9%)')] }),
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph(`${cgstVal.toLocaleString()}/-`)] }),
-              ]}),
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph('SGST (9%)')] }),
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph('')] }),
-                new TableCell({ children: [new Paragraph(`${sgstVal.toLocaleString()}/-`)] }),
-              ]}),
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Total:', bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph('')], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph('')], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${totalQuantity} Months`, bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${totalAmountVal.toLocaleString()}/-`, bold: true })] })], shading: { fill: 'E8E5D3' } }),
-              ]}),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph('CGST (9%)')] }),
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph(`${cgstVal.toLocaleString()}/-`)] }),
+                ]
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph('SGST (9%)')] }),
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph('')] }),
+                  new TableCell({ children: [new Paragraph(`${sgstVal.toLocaleString()}/-`)] }),
+                ]
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Total:', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph('')], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph('')], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${totalQuantity} Months`, bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${totalAmountVal.toLocaleString()}/-`, bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                ]
+              }),
             ],
           }),
           new Paragraph({ text: '' }),
@@ -177,20 +195,24 @@ export async function generateInvoiceBuffer(invoice, format) {
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'HSN',              bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Amount',          bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'CGST (9%)',       bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'SGST (9%)',       bold: true })] })], shading: { fill: 'E8E5D3' } }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Total Tax Amount',bold: true })] })], shading: { fill: 'E8E5D3' } }),
-              ]}),
-              new TableRow({ children: [
-                new TableCell({ children: [new Paragraph(settings.defaultHsnCode)] }),
-                new TableCell({ children: [new Paragraph(`${baseAmountVal.toLocaleString()}/-`)] }),
-                new TableCell({ children: [new Paragraph(`${cgstVal.toLocaleString()}/-`)] }),
-                new TableCell({ children: [new Paragraph(`${sgstVal.toLocaleString()}/-`)] }),
-                new TableCell({ children: [new Paragraph(`${taxAmountVal.toLocaleString()}/-`)] }),
-              ]}),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'HSN', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Amount', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'CGST (9%)', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'SGST (9%)', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Total Tax Amount', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                ]
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph(settings.defaultHsnCode)] }),
+                  new TableCell({ children: [new Paragraph(`${baseAmountVal.toLocaleString()}/-`)] }),
+                  new TableCell({ children: [new Paragraph(`${cgstVal.toLocaleString()}/-`)] }),
+                  new TableCell({ children: [new Paragraph(`${sgstVal.toLocaleString()}/-`)] }),
+                  new TableCell({ children: [new Paragraph(`${taxAmountVal.toLocaleString()}/-`)] }),
+                ]
+              }),
             ],
           }),
           new Paragraph({ text: '' }),
@@ -239,18 +261,18 @@ export async function generateSalesInvoicePDF(invoice) {
   const formattedDate = new Date(invoice.invoiceDate || invoice.date || Date.now()).toLocaleDateString('en-GB');
 
   const totalAmountVal = Number(invoice.totalAmount) || 0;
-  const taxAmountVal   = Number(invoice.taxAmount)   || (totalAmountVal * 18 / 118);
-  const cgstVal        = taxAmountVal / 2;
-  const sgstVal        = taxAmountVal / 2;
-  const baseAmountVal  = totalAmountVal - taxAmountVal;
-  const totalQuantity  = (invoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const taxAmountVal = Number(invoice.taxAmount) || (totalAmountVal * 18 / 118);
+  const cgstVal = taxAmountVal / 2;
+  const sgstVal = taxAmountVal / 2;
+  const baseAmountVal = totalAmountVal - taxAmountVal;
+  const totalQuantity = (invoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
 
   return new Promise((resolve, reject) => {
     try {
-      const doc          = new PDFDocument({ size: 'A4', margin: 40 });
-      const filename     = `inv-${invoice.invoiceNumber}-${Date.now()}.pdf`;
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const filename = `inv-${invoice.invoiceNumber}-${Date.now()}.pdf`;
       const relativePath = `uploads/invoices/${filename}`;
-      const filePath     = path.resolve(relativePath);
+      const filePath = path.resolve(relativePath);
 
       const dirPath = path.dirname(filePath);
       if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
@@ -285,36 +307,36 @@ export async function generatePOInvoice(po, vendor) {
   const formattedDate = new Date(po.createdAt || Date.now()).toLocaleDateString('en-GB');
 
   const totalAmountVal = Number(po.totalAmount) || 0;
-  const taxAmountVal   = Number(po.taxAmount)   || 0;
-  const cgstVal        = taxAmountVal / 2;
-  const sgstVal        = taxAmountVal / 2;
-  const baseAmountVal  = totalAmountVal - taxAmountVal;
-  const totalQuantity  = (po.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const taxAmountVal = Number(po.taxAmount) || 0;
+  const cgstVal = taxAmountVal / 2;
+  const sgstVal = taxAmountVal / 2;
+  const baseAmountVal = totalAmountVal - taxAmountVal;
+  const totalQuantity = (po.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
 
   // Build a normalised invoice-like object so _drawInvoicePDF can render it
   const poAsInvoice = {
-    invoiceNumber:   po.poNumber,
-    date:            po.createdAt || new Date(),
-    customerName:    vendor.name || 'Vendor',
+    invoiceNumber: po.poNumber,
+    date: po.createdAt || new Date(),
+    customerName: vendor.name || 'Vendor',
     customerAddress: vendor.address || 'N/A',
-    customerPhone:   vendor.phone   || vendor.contactPerson || 'N/A',
-    customerGst:     vendor.gstNumber || 'N/A',
-    totalAmount:     totalAmountVal,
-    taxAmount:       taxAmountVal,
+    customerPhone: vendor.phone || vendor.contactPerson || 'N/A',
+    customerGst: vendor.gstNumber || 'N/A',
+    totalAmount: totalAmountVal,
+    taxAmount: taxAmountVal,
     items: (po.items || []).map(item => ({
       description: item.name || 'Item',
-      quantity:    item.quantity || 1,
-      unitPrice:   item.price || 0,
-      total:       (item.quantity || 1) * (item.price || 0),
+      quantity: item.quantity || 1,
+      unitPrice: item.price || 0,
+      total: (item.quantity || 1) * (item.price || 0),
     })),
   };
 
   return new Promise((resolve, reject) => {
     try {
-      const doc          = new PDFDocument({ size: 'A4', margin: 40 });
-      const filename     = `po-${po.poNumber}-${Date.now()}.pdf`;
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const filename = `po-${po.poNumber}-${Date.now()}.pdf`;
       const relativePath = `uploads/pos/${filename}`;
-      const filePath     = path.resolve(relativePath);
+      const filePath = path.resolve(relativePath);
 
       const dirPath = path.dirname(filePath);
       if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
@@ -418,8 +440,8 @@ function _drawInvoicePDF(
 
   // ── Main items table ──────────────────────────────────────
   const tableY = billingY + colH + 14;
-  const colX   = [40, 75, 320, 395, 470, 555];
-  const colW   = [35, 245, 75, 75, 85];
+  const colX = [40, 75, 320, 395, 470, 555];
+  const colW = [35, 245, 75, 75, 85];
   const hdrLabels = ['S NO', 'Description of Services', 'HSN Code', 'Quantity', 'Amount'];
 
   doc.fillColor('#e8e5d3').rect(40, tableY, 515, 20).fill();
@@ -487,10 +509,10 @@ function _drawInvoicePDF(
   for (let i = 1; i < gstX.length - 1; i++) doc.moveTo(gstX[i], rowY).lineTo(gstX[i], rowY + 18).stroke();
   doc.font('Helvetica').fontSize(8);
   doc.text(settings.defaultHsnCode, gstX[0], rowY + 5, { width: gstW[0], align: 'center' });
-  doc.text(`${baseAmountVal.toLocaleString()}/-`,  gstX[1], rowY + 5, { width: gstW[1] - 6, align: 'right' });
-  doc.text(`${cgstVal.toLocaleString()}/-`,         gstX[2], rowY + 5, { width: gstW[2] - 6, align: 'right' });
-  doc.text(`${sgstVal.toLocaleString()}/-`,         gstX[3], rowY + 5, { width: gstW[3] - 6, align: 'right' });
-  doc.text(`${taxAmountVal.toLocaleString()}/-`,    gstX[4], rowY + 5, { width: gstW[4] - 6, align: 'right' });
+  doc.text(`${baseAmountVal.toLocaleString()}/-`, gstX[1], rowY + 5, { width: gstW[1] - 6, align: 'right' });
+  doc.text(`${cgstVal.toLocaleString()}/-`, gstX[2], rowY + 5, { width: gstW[2] - 6, align: 'right' });
+  doc.text(`${sgstVal.toLocaleString()}/-`, gstX[3], rowY + 5, { width: gstW[3] - 6, align: 'right' });
+  doc.text(`${taxAmountVal.toLocaleString()}/-`, gstX[4], rowY + 5, { width: gstW[4] - 6, align: 'right' });
 
   rowY += 18;
   doc.fillColor('#e8e5d3').rect(40, rowY, 515, 18).fill();
@@ -498,10 +520,10 @@ function _drawInvoicePDF(
   for (let i = 1; i < gstX.length - 1; i++) doc.moveTo(gstX[i], rowY).lineTo(gstX[i], rowY + 18).stroke();
   doc.font('Helvetica-Bold').fontSize(8).fillColor('#000000');
   doc.text('Total', gstX[0], rowY + 5, { width: gstW[0], align: 'center' });
-  doc.text(`${baseAmountVal.toLocaleString()}/-`,  gstX[1], rowY + 5, { width: gstW[1] - 6, align: 'right' });
-  doc.text(`${cgstVal.toLocaleString()}/-`,         gstX[2], rowY + 5, { width: gstW[2] - 6, align: 'right' });
-  doc.text(`${sgstVal.toLocaleString()}/-`,         gstX[3], rowY + 5, { width: gstW[3] - 6, align: 'right' });
-  doc.text(`${taxAmountVal.toLocaleString()}/-`,    gstX[4], rowY + 5, { width: gstW[4] - 6, align: 'right' });
+  doc.text(`${baseAmountVal.toLocaleString()}/-`, gstX[1], rowY + 5, { width: gstW[1] - 6, align: 'right' });
+  doc.text(`${cgstVal.toLocaleString()}/-`, gstX[2], rowY + 5, { width: gstW[2] - 6, align: 'right' });
+  doc.text(`${sgstVal.toLocaleString()}/-`, gstX[3], rowY + 5, { width: gstW[3] - 6, align: 'right' });
+  doc.text(`${taxAmountVal.toLocaleString()}/-`, gstX[4], rowY + 5, { width: gstW[4] - 6, align: 'right' });
 
   // ── Amount in words & bank details ───────────────────────
   rowY += 30;
@@ -512,9 +534,9 @@ function _drawInvoicePDF(
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000').text("Company's Bank Details", bankX, rowY);
   doc.fontSize(8).font('Helvetica').fillColor('#333333');
   doc.text(`A/c Holder's Name : ${settings.accountHolderName}`, bankX + 10, rowY + 13);
-  doc.text(`Bank Name : ${settings.bankName}`,                   bankX + 10, rowY + 24);
-  doc.text(`Account No : ${settings.accountNumber}`,            bankX + 10, rowY + 35);
-  doc.text(`Branch & IFS Code : ${settings.ifscCode}`,          bankX + 10, rowY + 46);
+  doc.text(`Bank Name : ${settings.bankName}`, bankX + 10, rowY + 24);
+  doc.text(`Account No : ${settings.accountNumber}`, bankX + 10, rowY + 35);
+  doc.text(`Branch & IFS Code : ${settings.ifscCode}`, bankX + 10, rowY + 46);
 
   // ── Note block ────────────────────────────────────────────
   rowY += 72;
@@ -524,7 +546,212 @@ function _drawInvoicePDF(
   doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#000000').text(settings.noteText, 40, rowY + 19, { align: 'center', width: 515 });
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 4. PURCHASE VOUCHER ─ returns Buffer (for HTTP download)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Generate a Purchase Voucher Buffer (PDF) for direct streaming/downloading.
+ * @param {Object} purchaseEntry – normalised purchase entry plain object
+ * @returns {Promise<Buffer>}
+ */
+export async function generatePurchaseVoucherBuffer(purchaseEntry) {
+  const settings = await getSettings(purchaseEntry.companyId);
+  const formattedVoucherDate = new Date(purchaseEntry.purchaseDate || Date.now()).toLocaleDateString('en-GB');
+  const formattedInvoiceDate = new Date(purchaseEntry.invoiceDate || Date.now()).toLocaleDateString('en-GB');
+
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const bufferPromise = getStreamAsBuffer(doc);
+
+  const headerY = 40;
+  let hasSquareLogo = false;
+  let hasNameLogo = false;
+  let squareLogoPath = '';
+  let nameLogoPath = '';
+
+  if (settings.logoSquareUrl) {
+    squareLogoPath = path.resolve(settings.logoSquareUrl.startsWith('/') ? settings.logoSquareUrl.slice(1) : settings.logoSquareUrl);
+    if (fs.existsSync(squareLogoPath)) {
+      hasSquareLogo = true;
+    }
+  }
+
+  if (settings.logoUrl) {
+    nameLogoPath = path.resolve(settings.logoUrl.startsWith('/') ? settings.logoUrl.slice(1) : settings.logoUrl);
+    if (fs.existsSync(nameLogoPath)) {
+      hasNameLogo = true;
+    }
+  }
+
+  if (hasSquareLogo && hasNameLogo) {
+    doc.image(squareLogoPath, 40, headerY, { width: 40, height: 40 });
+    doc.image(nameLogoPath, 84, headerY, { width: 135, height: 40 });
+  } else if (hasSquareLogo) {
+    doc.image(squareLogoPath, 40, headerY, { width: 40, height: 40 });
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#002e6e').text(settings.companyName, 85, headerY + 13);
+  } else if (hasNameLogo) {
+    doc.image(nameLogoPath, 40, headerY, { width: 155, height: 40 });
+  } else {
+    drawVectorLogo(doc, 40, headerY, settings.companyName);
+  }
+
+  // ── Voucher Box ──────────────────────────────────────────
+  const boxW = 160; const boxH = 50; const boxX = 555 - boxW;
+  doc.lineWidth(1).strokeColor('#4a5568');
+  doc.rect(boxX, headerY, boxW, boxH).stroke();
+  doc.moveTo(boxX, headerY + 16).lineTo(boxX + boxW, headerY + 16).stroke();
+  doc.moveTo(boxX, headerY + 33).lineTo(boxX + boxW, headerY + 33).stroke();
+  doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1a202c');
+  doc.text(`Voucher No: ${purchaseEntry.purchaseVoucherNumber || 'N/A'}`, boxX + 6, headerY + 4);
+  doc.text(`Voucher Date: ${formattedVoucherDate}`, boxX + 6, headerY + 20);
+  doc.text(`Ref Invoice: ${purchaseEntry.invoiceNumber || 'N/A'} (${formattedInvoiceDate})`, boxX + 6, headerY + 37);
+
+  // ── Document Title ─────────────────────────────────────────
+  doc.fontSize(22).font('Helvetica-Bold').fillColor('#1a365d').text('PURCHASE VOUCHER', 40, 100, { align: 'center' });
+
+  // ── Supplier & Company details cards ─────────────────────────
+  const billingY = 135; const colH = 92;
+
+  // Company Info card (Left)
+  doc.lineWidth(1).strokeColor('#cbd5e1');
+  doc.rect(40, billingY, 240, colH).stroke();
+  doc.fillColor('#f1f5f9').rect(41, billingY + 1, 238, 16).fill();
+  doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text('COMPANY DETAILS', 50, billingY + 4);
+  doc.fontSize(8).font('Helvetica-Bold').text(settings.companyName.toUpperCase(), 50, billingY + 23);
+  doc.font('Helvetica').fillColor('#334155').text(settings.address, 50, billingY + 35, { width: 220 });
+  doc.text(`Mobile: ${settings.mobile}`, 50, billingY + 64);
+  doc.text(`GST No: ${settings.gstNumber}`, 50, billingY + 75);
+
+  // Supplier Snapshot Info card (Right)
+  doc.rect(294, billingY, 261, colH).stroke();
+  doc.fillColor('#f1f5f9').rect(295, billingY + 1, 259, 16).fill();
+  doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text('SUPPLIER DETAILS', 304, billingY + 4);
+  doc.fontSize(8).font('Helvetica-Bold').text((purchaseEntry.supplierName || 'N/A').toUpperCase(), 304, billingY + 23);
+  doc.font('Helvetica').fillColor('#334155').text(purchaseEntry.supplierAddress || 'N/A', 304, billingY + 35, { width: 245 });
+  doc.text(`GSTIN: ${purchaseEntry.supplierGSTIN || 'N/A'}`, 304, billingY + 54);
+  doc.text(`Phone: ${purchaseEntry.supplierMobileNumber || 'N/A'}`, 304, billingY + 65);
+  doc.text(`Email: ${purchaseEntry.supplierEmail || 'N/A'}`, 304, billingY + 76);
+
+  // ── Items Table ──────────────────────────────────────────
+  const tableY = billingY + colH + 15;
+  const colX = [40, 70, 260, 320, 370, 430, 485, 555];
+  const colW = [30, 190, 60, 50, 60, 55, 70];
+  const tableHdrs = ['S.No', 'Item Description', 'Item Code', 'Quantity', 'Unit', 'Price', 'Discount', 'Total'];
+
+  doc.fillColor('#e2e8f0').rect(40, tableY, 515, 20).fill();
+  doc.lineWidth(1).strokeColor('#475569').rect(40, tableY, 515, 20).stroke();
+  for (let i = 1; i < colX.length - 1; i++) doc.moveTo(colX[i], tableY).lineTo(colX[i], tableY + 20).stroke();
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+  tableHdrs.forEach((hdr, idx) => {
+    const align = (idx === 0 || idx === 2 || idx === 3 || idx === 4) ? 'center' : (idx === 1 ? 'left' : 'right');
+    doc.text(hdr, colX[idx] + (align === 'left' ? 5 : 0), tableY + 6, { width: colW[idx], align });
+  });
+
+  let rowY = tableY + 20;
+  const rowH = 22;
+  (purchaseEntry.items || []).forEach((item, idx) => {
+    doc.rect(40, rowY, 515, rowH).stroke();
+    for (let i = 1; i < colX.length - 1; i++) doc.moveTo(colX[i], rowY).lineTo(colX[i], rowY + rowH).stroke();
+    doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
+    doc.text(String(idx + 1), colX[0], rowY + 7, { width: colW[0], align: 'center' });
+    doc.text(item.name || 'Item', colX[1] + 5, rowY + 7, { width: colW[1] - 8 });
+    doc.text(item.code || '-', colX[2], rowY + 7, { width: colW[2], align: 'center' });
+    doc.text(String(item.quantity), colX[3], rowY + 7, { width: colW[3], align: 'center' });
+    doc.text(item.unit || 'Pcs', colX[4], rowY + 7, { width: colW[4], align: 'center' });
+    doc.text(Number(item.price).toFixed(2), colX[5], rowY + 7, { width: colW[5] - 5, align: 'right' });
+    doc.text(Number(item.discountAmount || 0).toFixed(2), colX[6], rowY + 7, { width: colW[6] - 5, align: 'right' });
+    doc.text(Number(item.totalItemAmount || (item.quantity * item.price)).toFixed(2), colX[7], rowY + 7, { width: colW[7] - 5, align: 'right' });
+    rowY += rowH;
+  });
+
+  // ── Overheads & Grand Summary Blocks ────────────────────────
+  rowY += 15;
+  const bottomY = rowY;
+
+  // Left side: Additional Overhead Charges & Payment Info
+  doc.lineWidth(1).strokeColor('#cbd5e1');
+  doc.rect(40, bottomY, 250, 105).stroke();
+  doc.fillColor('#f8fafc').rect(41, bottomY + 1, 248, 16).fill();
+  doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text('OVERHEAD CHARGES & PAYMENTS', 48, bottomY + 4);
+
+  doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+  doc.text(`Transportation Charges:`, 48, bottomY + 23);
+  doc.font('Helvetica-Bold').text(Number(purchaseEntry.transportationCharges || 0).toFixed(2), 170, bottomY + 23, { align: 'right', width: 110 });
+
+  doc.font('Helvetica').text(`Packing Charges:`, 48, bottomY + 35);
+  doc.font('Helvetica-Bold').text(Number(purchaseEntry.packingCharges || 0).toFixed(2), 170, bottomY + 35, { align: 'right', width: 110 });
+
+  doc.font('Helvetica').text(`Loading/Unloading:`, 48, bottomY + 47);
+  doc.font('Helvetica-Bold').text(Number(purchaseEntry.loadingUnloadingCharges || 0).toFixed(2), 170, bottomY + 47, { align: 'right', width: 110 });
+
+  doc.font('Helvetica').text(`Other Charges:`, 48, bottomY + 59);
+  doc.font('Helvetica-Bold').text(Number(purchaseEntry.otherCharges || 0).toFixed(2), 170, bottomY + 59, { align: 'right', width: 110 });
+
+  doc.moveTo(40, bottomY + 72).lineTo(290, bottomY + 72).stroke();
+  
+  doc.font('Helvetica').text(`Payment Status:`, 48, bottomY + 78);
+  doc.font('Helvetica-Bold').fillColor(purchaseEntry.paymentStatus === 'Paid' ? '#16a34a' : (purchaseEntry.paymentStatus === 'Partial' ? '#d97706' : '#dc2626')).text(purchaseEntry.paymentStatus, 140, bottomY + 78, { width: 140, align: 'right' });
+  
+  doc.font('Helvetica').fillColor('#334155').text(`Payment Mode:`, 48, bottomY + 90);
+  doc.font('Helvetica-Bold').text(`${purchaseEntry.paymentMode || 'Credit'}${purchaseEntry.paymentReferenceNumber ? ' (Ref: ' + purchaseEntry.paymentReferenceNumber + ')' : ''}`, 140, bottomY + 90, { width: 140, align: 'right' });
+
+  // Right side: Financial Summary Block
+  doc.lineWidth(1).strokeColor('#cbd5e1');
+  doc.rect(305, bottomY, 250, 105).stroke();
+  doc.fillColor('#f8fafc').rect(306, bottomY + 1, 248, 16).fill();
+  doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text('FINANCIAL SUMMARY', 313, bottomY + 4);
+
+  doc.fontSize(8).font('Helvetica').fillColor('#334155');
+  doc.text(`Sub Total:`, 313, bottomY + 23);
+  doc.text(Number(purchaseEntry.subTotal || 0).toFixed(2), 430, bottomY + 23, { align: 'right', width: 115 });
+
+  doc.text(`Total Discount:`, 313, bottomY + 35);
+  doc.text(`(-) ${Number(purchaseEntry.totalDiscount || 0).toFixed(2)}`, 430, bottomY + 35, { align: 'right', width: 115 });
+
+  doc.text(`Overheads Total:`, 313, bottomY + 47);
+  doc.text(`(+) ${Number(purchaseEntry.additionalChargesTotal || 0).toFixed(2)}`, 430, bottomY + 47, { align: 'right', width: 115 });
+
+  doc.moveTo(305, bottomY + 59).lineTo(555, bottomY + 59).stroke();
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a');
+  doc.text(`GRAND TOTAL:`, 313, bottomY + 64);
+  doc.text(Number(purchaseEntry.grandTotal || 0).toFixed(2), 430, bottomY + 64, { align: 'right', width: 115 });
+
+  doc.font('Helvetica').fontSize(8).fillColor('#334155');
+  doc.text(`Amount Paid (Down-payment):`, 313, bottomY + 78);
+  doc.text(Number(purchaseEntry.amountPaid || 0).toFixed(2), 430, bottomY + 78, { align: 'right', width: 115 });
+
+  doc.font('Helvetica-Bold').text(`OUTSTANDING DUE:`, 313, bottomY + 90);
+  doc.text(Number(purchaseEntry.amountDue || 0).toFixed(2), 430, bottomY + 90, { align: 'right', width: 115 });
+
+  // ── Notes ────────────────────────────────────────────────
+  rowY = bottomY + 120;
+  if (purchaseEntry.notes) {
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text('Notes / Remarks:', 40, rowY);
+    doc.fontSize(8).font('Helvetica-Oblique').fillColor('#475569').text(purchaseEntry.notes, 40, rowY + 12, { width: 515 });
+    rowY += 40;
+  }
+
+  // ── Amount in words ──────────────────────────────────────
+  doc.fontSize(8).font('Helvetica').fillColor('#475569').text('Grand Total (in words):', 40, rowY);
+  doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a').text(priceToWords(purchaseEntry.grandTotal), 40, rowY + 11, { width: 515 });
+
+  // ── Signatures ───────────────────────────────────────────
+  rowY += 60;
+  doc.moveTo(40, rowY).lineTo(180, rowY).strokeColor('#94a3b8').lineWidth(0.5).stroke();
+  doc.moveTo(375, rowY).lineTo(515, rowY).stroke();
+
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#475569');
+  doc.text('Prepared / Received By', 40, rowY + 5, { width: 140, align: 'center' });
+  doc.text('Authorized Signatory', 375, rowY + 5, { width: 140, align: 'center' });
+
+  doc.end();
+  return await bufferPromise;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Legacy default export (kept for any direct import compat)
 // ─────────────────────────────────────────────────────────────
 export default generateInvoiceBuffer;
+

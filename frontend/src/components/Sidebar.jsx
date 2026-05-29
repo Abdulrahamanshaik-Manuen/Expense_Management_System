@@ -5,7 +5,7 @@ import {
   DollarSign,
   ShoppingBag,
   FileSpreadsheet,
-  FileText,
+  Layers,
   Users,
   ShieldCheck,
   LogOut
@@ -19,8 +19,8 @@ const Sidebar = () => {
     { name: 'Home', path: '/', icon: <LayoutDashboard size={20} /> },
     { name: 'Expenses', path: '/expenses', icon: <DollarSign size={20} /> },
     { name: 'Purchases', path: '/purchases', icon: <ShoppingBag size={20} /> },
-    { name: 'Sales & Billing', path: '/sales', icon: <FileSpreadsheet size={20} /> },
-    { name: 'Invoices', path: '/invoices', icon: <FileText size={20} /> },
+    { name: 'Sales', path: '/sales', icon: <FileSpreadsheet size={20} /> },
+    { name: 'Reports', path: '/reports', icon: <Layers size={20} /> },
   ];
 
   if (user?.role === 'admin') {
