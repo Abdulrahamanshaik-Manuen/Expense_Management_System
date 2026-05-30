@@ -35,18 +35,10 @@ const Dashboard = () => {
   const currentUser = userString ? JSON.parse(userString) : { name: 'User', role: 'admin' };
   const isAdmin = true; // All users are admins in this unified setup
 
-  const [stats, setStats] = useState({
-    totalSales: 0,
-    salesPaid: 0,
-    salesDue: 0,
-    expensesPaid: 0,
-    expensesPending: 0,
-    purchasePending: 0,
-    totalInvoices: 0,
-    totalExpenses: 0,
-  });
-  const [expenseData, setExpenseData] = useState([]);
-  const [cashFlowData, setCashFlowData] = useState([]);
+  const [timePeriod, setTimePeriod] = useState('All Time');
+  const [rawExpenses, setRawExpenses] = useState([]);
+  const [rawInvoices, setRawInvoices] = useState([]);
+  const [rawPurchases, setRawPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,51 +51,9 @@ const Dashboard = () => {
           API.get('/purchase-entries'),
         ]);
 
-        const expenses = expensesRes.data;
-        const invoices = invoicesRes.data;
-        const purchases = purchasesRes.data;
-
-        let totalSalesVal = 0, salesPaidVal = 0, salesDueVal = 0;
-        invoices.forEach(inv => {
-          totalSalesVal += inv.totalAmount || 0;
-          salesPaidVal += inv.amountPaid || 0;
-          salesDueVal += inv.amountDue || 0;
-        });
-
-        let expPaidVal = 0, expPendingVal = 0;
-        expenses.forEach(exp => {
-          if (exp.paymentStatus === 'Paid') expPaidVal += exp.amount || 0;
-          else expPendingVal += exp.amount || 0;
-        });
-
-        let purchPendingVal = 0;
-        purchases.forEach(pr => { purchPendingVal += pr.amountDue || 0; });
-
-        setStats({
-          totalSales: totalSalesVal,
-          salesPaid: salesPaidVal,
-          salesDue: salesDueVal,
-          expensesPaid: expPaidVal,
-          expensesPending: expPendingVal,
-          purchasePending: purchPendingVal,
-          totalInvoices: invoices.length,
-          totalExpenses: expenses.length,
-        });
-
-        const categoryMap = {};
-        expenses.forEach(exp => {
-          const cat = exp.category?.name || 'Unclassified';
-          categoryMap[cat] = (categoryMap[cat] || 0) + exp.amount;
-        });
-        setExpenseData(Object.keys(categoryMap).map(name => ({ name, value: categoryMap[name] })));
-
-        setCashFlowData([
-          { month: 'Jan', Sales: totalSalesVal * 0.15, Expenses: expPaidVal * 0.12 },
-          { month: 'Feb', Sales: totalSalesVal * 0.20, Expenses: expPaidVal * 0.18 },
-          { month: 'Mar', Sales: totalSalesVal * 0.18, Expenses: expPaidVal * 0.15 },
-          { month: 'Apr', Sales: totalSalesVal * 0.22, Expenses: expPaidVal * 0.25 },
-          { month: 'May', Sales: totalSalesVal * 0.25, Expenses: expPaidVal * 0.30 },
-        ]);
+        setRawExpenses(expensesRes.data || []);
+        setRawInvoices(invoicesRes.data || []);
+        setRawPurchases(purchasesRes.data || []);
       } catch (error) {
         console.error('Error fetching dashboard statistics:', error);
       } finally {
@@ -112,6 +62,175 @@ const Dashboard = () => {
     };
     fetchDashboardData();
   }, []);
+
+  const checkDateInPeriod = (dateValue, period) => {
+    if (!dateValue) return false;
+    const dateObj = new Date(dateValue);
+    const now = new Date();
+    
+    if (period === 'This Month') {
+      return dateObj.getMonth() === now.getMonth() && dateObj.getFullYear() === now.getFullYear();
+    }
+    if (period === 'Last 30 Days') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      return dateObj >= thirtyDaysAgo && dateObj <= now;
+    }
+    if (period === 'This Quarter') {
+      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      const quarterStart = new Date(now.getFullYear(), quarterStartMonth, 1);
+      return dateObj >= quarterStart && dateObj <= now;
+    }
+    if (period === 'This Year') {
+      return dateObj.getFullYear() === now.getFullYear();
+    }
+    return true; // 'All Time'
+  };
+
+  const filteredInvoices = React.useMemo(() => {
+    return rawInvoices.filter(inv => checkDateInPeriod(inv.invoiceDate || inv.createdAt, timePeriod));
+  }, [rawInvoices, timePeriod]);
+
+  const filteredExpenses = React.useMemo(() => {
+    return rawExpenses.filter(exp => checkDateInPeriod(exp.date || exp.createdAt, timePeriod));
+  }, [rawExpenses, timePeriod]);
+
+  const filteredPurchases = React.useMemo(() => {
+    return rawPurchases.filter(pr => checkDateInPeriod(pr.purchaseDate || pr.createdAt, timePeriod));
+  }, [rawPurchases, timePeriod]);
+
+  const stats = React.useMemo(() => {
+    let totalSales = 0, salesPaid = 0, salesDue = 0;
+    filteredInvoices.forEach(inv => {
+      totalSales += inv.totalAmount || 0;
+      salesPaid += inv.amountPaid || 0;
+      salesDue += inv.amountDue || 0;
+    });
+
+    let expensesPaid = 0, expensesPending = 0;
+    filteredExpenses.forEach(exp => {
+      if (exp.paymentStatus === 'Paid') expensesPaid += exp.amount || 0;
+      else expensesPending += exp.amount || 0;
+    });
+
+    let purchasePending = 0;
+    let totalPurchasesBilled = 0;
+    filteredPurchases.forEach(pr => {
+      purchasePending += pr.amountDue || 0;
+      totalPurchasesBilled += pr.grandTotal || pr.totalAmount || 0;
+    });
+
+    // Net Profit: Sales (Revenue) minus all expenses and purchases logged
+    const netProfit = totalSales - (expensesPaid + expensesPending + totalPurchasesBilled);
+
+    return {
+      totalSales,
+      salesPaid,
+      salesDue,
+      expensesPaid,
+      expensesPending,
+      purchasePending,
+      totalInvoices: filteredInvoices.length,
+      totalExpenses: filteredExpenses.length,
+      netProfit
+    };
+  }, [filteredInvoices, filteredExpenses, filteredPurchases]);
+
+  const expenseData = React.useMemo(() => {
+    const categoryMap = {};
+    filteredExpenses.forEach(exp => {
+      const cat = exp.category?.name || 'Unclassified';
+      categoryMap[cat] = (categoryMap[cat] || 0) + exp.amount;
+    });
+    return Object.keys(categoryMap).map(name => ({ name, value: categoryMap[name] }));
+  }, [filteredExpenses]);
+
+  const cashFlowData = React.useMemo(() => {
+    const months = [];
+    const now = new Date();
+    // Get last 6 months starting from 5 months ago
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = d.toLocaleString('default', { month: 'short' });
+      const year = d.getFullYear();
+      const monthIndex = d.getMonth();
+      months.push({
+        month: `${monthName} ${year.toString().slice(-2)}`,
+        year,
+        monthIndex,
+        Sales: 0,
+        Expenses: 0
+      });
+    }
+
+    rawInvoices.forEach(inv => {
+      const dateVal = inv.invoiceDate || inv.createdAt;
+      if (!dateVal) return;
+      const d = new Date(dateVal);
+      const mIdx = d.getMonth();
+      const yVal = d.getFullYear();
+      const bucket = months.find(m => m.monthIndex === mIdx && m.year === yVal);
+      if (bucket) {
+        bucket.Sales += inv.totalAmount || 0;
+      }
+    });
+
+    rawExpenses.forEach(exp => {
+      const dateVal = exp.date || exp.createdAt;
+      if (!dateVal) return;
+      const d = new Date(dateVal);
+      const mIdx = d.getMonth();
+      const yVal = d.getFullYear();
+      const bucket = months.find(m => m.monthIndex === mIdx && m.year === yVal);
+      if (bucket) {
+        bucket.Expenses += exp.amount || 0;
+      }
+    });
+
+    return months.map(({ month, Sales, Expenses }) => ({
+      month,
+      Sales,
+      Expenses
+    }));
+  }, [rawInvoices, rawExpenses]);
+
+  const recentActivity = React.useMemo(() => {
+    const combined = [
+      ...rawInvoices.map(inv => ({
+        id: inv._id,
+        type: 'Sale',
+        title: `Invoice ${inv.invoiceNumber}`,
+        subtitle: inv.customerName || 'Direct Customer',
+        amount: inv.totalAmount || 0,
+        date: new Date(inv.invoiceDate || inv.createdAt),
+        status: inv.paymentStatus || 'Unpaid',
+        path: '/sales'
+      })),
+      ...rawExpenses.map(exp => ({
+        id: exp._id,
+        type: 'Expense',
+        title: exp.title,
+        subtitle: exp.category?.name || 'Operational Cost',
+        amount: exp.amount || 0,
+        date: new Date(exp.date || exp.createdAt),
+        status: exp.paymentStatus || 'Paid',
+        path: '/expenses'
+      })),
+      ...rawPurchases.map(pr => ({
+        id: pr._id,
+        type: 'Purchase',
+        title: pr.purchaseVoucherNumber || `Purchase Entry`,
+        subtitle: pr.supplierName || pr.vendor?.name || 'Supplier',
+        amount: pr.grandTotal || pr.totalAmount || 0,
+        date: new Date(pr.purchaseDate || pr.createdAt),
+        status: pr.paymentStatus || 'Unpaid',
+        path: '/purchases'
+      }))
+    ];
+
+    combined.sort((a, b) => b.date - a.date);
+    return combined.slice(0, 5);
+  }, [rawInvoices, rawExpenses, rawPurchases]);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
@@ -136,11 +255,41 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)]">
+    <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)] select-none">
+      
+      {/* Welcome Header & Timeperiod Dropdown Filter */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-200 pb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+            <Activity size={20} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+              Welcome back, {currentUser.name}!
+              <Sparkles size={16} className="text-blue-500 animate-pulse" />
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">Here's the financial status of your enterprise workspace</p>
+          </div>
+        </div>
 
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Analysis Period:</span>
+          <select
+            value={timePeriod}
+            onChange={(e) => setTimePeriod(e.target.value)}
+            className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="All Time">All Time</option>
+            <option value="This Month">This Month</option>
+            <option value="Last 30 Days">Last 30 Days</option>
+            <option value="This Quarter">This Quarter</option>
+            <option value="This Year">This Year</option>
+          </select>
+        </div>
+      </div>
 
       {/* ── KPI METRIC CARDS ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         {/* Sales */}
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-blue-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
@@ -208,59 +357,64 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-3.5 w-24 bg-slate-100 rounded animate-pulse mt-1" />
             ) : (
-              'Outstanding balances'
+              'Outstanding collections'
             )}
           </div>
         </div>
 
-        {/* Payables — only shown to admin in full; manager sees invoice count */}
-        {isAdmin ? (
-          <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-red-500/30 transition-all duration-300">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payables</span>
-              <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
-                <AlertTriangle size={16} />
-              </div>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 font-sans tracking-tight">
-              {loading ? (
-                <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
-              ) : (
-                `₹${stats.purchasePending.toLocaleString()}`
-              )}
-            </h3>
-            <div className="text-[11px] text-slate-500 mt-1">
-              {loading ? (
-                <div className="h-3.5 w-24 bg-slate-100 rounded animate-pulse mt-1" />
-              ) : (
-                'Vendor dues pending'
-              )}
+        {/* Payables */}
+        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-red-500/30 transition-all duration-300">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payables</span>
+            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
+              <AlertTriangle size={16} />
             </div>
           </div>
-        ) : (
-          <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-purple-500/30 transition-all duration-300">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Invoices</span>
-              <div className="w-8 h-8 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
-                <FileText size={16} />
-              </div>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 font-sans tracking-tight">
-              {loading ? (
-                <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
-              ) : (
-                stats.totalInvoices
-              )}
-            </h3>
-            <div className="text-[11px] text-slate-500 mt-1">
-              {loading ? (
-                <div className="h-3.5 w-24 bg-slate-100 rounded animate-pulse mt-1" />
-              ) : (
-                `${stats.totalExpenses} expenses logged`
-              )}
+          <h3 className="text-xl font-black text-slate-900 font-sans tracking-tight">
+            {loading ? (
+              <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
+            ) : (
+              `₹${stats.purchasePending.toLocaleString()}`
+            )}
+          </h3>
+          <div className="text-[11px] text-slate-500 mt-1">
+            {loading ? (
+              <div className="h-3.5 w-24 bg-slate-100 rounded animate-pulse mt-1" />
+            ) : (
+              'Vendor dues pending'
+            )}
+          </div>
+        </div>
+
+        {/* Dynamic Net Profit/Loss */}
+        <div className={`bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden transition-all duration-300 ${
+          stats.netProfit >= 0 ? 'hover:border-emerald-500/30' : 'hover:border-red-500/30'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Net Profit</span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+              stats.netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+            }`}>
+              {stats.netProfit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
             </div>
           </div>
-        )}
+          <h3 className={`text-xl font-black font-sans tracking-tight ${
+            stats.netProfit >= 0 ? 'text-emerald-600' : 'text-red-650'
+          }`}>
+            {loading ? (
+              <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
+            ) : (
+              `${stats.netProfit >= 0 ? '+' : ''}₹${stats.netProfit.toLocaleString()}`
+            )}
+          </h3>
+          <div className="text-[11px] text-slate-500 mt-1">
+            {loading ? (
+              <div className="h-3.5 w-24 bg-slate-100 rounded animate-pulse mt-1" />
+            ) : (
+              'Revenue minus spends & bills'
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── QUICK ACTION SHORTCUTS ────────────────────────────────── */}
@@ -368,6 +522,93 @@ const Dashboard = () => {
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ── RECENT FINANCIAL ACTIVITY FEED ───────────────────────── */}
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6 mt-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h4 className="font-extrabold text-sm text-slate-800">Recent Transactions</h4>
+            <p className="text-xs text-slate-500 mt-0.5">Real-time consolidated ledger logs</p>
+          </div>
+          <button
+            onClick={() => navigate('/reports')}
+            className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-500 transition-all hover:translate-x-0.5 cursor-pointer"
+          >
+            Detailed Reports <ArrowRight size={14} />
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                <th className="pb-3 pr-4">Transaction Details</th>
+                <th className="pb-3 px-4">Category / Contact</th>
+                <th className="pb-3 px-4">Payment Status</th>
+                <th className="pb-3 px-4">Amount</th>
+                <th className="pb-3 pl-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {loading ? (
+                <tr>
+                  <td colSpan="5" className="text-center py-10 text-slate-500 font-semibold">
+                    <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    Gathering latest audit events...
+                  </td>
+                </tr>
+              ) : recentActivity.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="text-center py-10 text-slate-550 font-semibold">
+                    No transactions registered in this workspace yet.
+                  </td>
+                </tr>
+              ) : (
+                recentActivity.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-slate-50/50 transition-all duration-150">
+                    <td className="py-3.5 pr-4 flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
+                        tx.type === 'Sale' ? 'bg-blue-50 text-blue-600' :
+                        tx.type === 'Expense' ? 'bg-emerald-50 text-emerald-600' :
+                        'bg-amber-50 text-amber-600'
+                      }`}>
+                        {tx.type === 'Sale' ? 'S' : tx.type === 'Expense' ? 'E' : 'P'}
+                      </div>
+                      <div>
+                        <p className="font-extrabold text-slate-800">{tx.title}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{tx.date.toLocaleDateString()}</p>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 font-semibold text-slate-600">
+                      {tx.subtitle}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`inline-flex items-center text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                        tx.status === 'Paid' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' :
+                        tx.status === 'Partial' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                        'bg-red-500/10 text-red-600 border-red-500/20'
+                      }`}>
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 font-black text-slate-900">
+                      ₹{tx.amount.toLocaleString()}
+                    </td>
+                    <td className="py-3.5 pl-4 text-right">
+                      <button
+                        onClick={() => navigate(tx.path)}
+                        className="inline-flex items-center gap-0.5 text-xs font-bold text-blue-600 hover:text-blue-500 transition-all hover:translate-x-0.5 cursor-pointer"
+                      >
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

@@ -24,7 +24,8 @@ import {
   Sparkles,
   TrendingDown,
   BookOpen,
-  FileText
+  FileText,
+  Activity
 } from 'lucide-react';
 
 /** Indian Currency Number-to-Words */
