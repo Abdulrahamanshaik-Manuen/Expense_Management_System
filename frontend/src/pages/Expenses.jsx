@@ -433,107 +433,107 @@ const Expenses = () => {
                   ) : (
                     filteredExpenses.map((exp) => (
                       <tr key={exp._id} className="hover:bg-slate-50 transition-colors">
-                      {/* Details */}
-                      <td className="px-6 py-4">
-                        <p className="font-semibold text-slate-800 leading-tight">{exp.title}</p>
-                        <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
-                          <Calendar size={12} /> {new Date(exp.date).toLocaleDateString()}
-                          {exp.notes && <span className="text-slate-400 italic">• {exp.notes}</span>}
-                        </p>
-                      </td>
+                        {/* Details */}
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-slate-800 leading-tight">{exp.title}</p>
+                          <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
+                            <Calendar size={12} /> {new Date(exp.date).toLocaleDateString()}
+                            {exp.notes && <span className="text-slate-400 italic">• {exp.notes}</span>}
+                          </p>
+                        </td>
 
-                      {/* Category */}
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-lg border border-slate-200">
-                          <Tag size={12} className="text-slate-500" />
-                          {exp.category?.name || 'Uncategorized'}
-                        </span>
-                      </td>
+                        {/* Category */}
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-lg border border-slate-200">
+                            <Tag size={12} className="text-slate-500" />
+                            {exp.category?.name || 'Uncategorized'}
+                          </span>
+                        </td>
 
-                      {/* Financials */}
-                      <td className="px-6 py-4">
-                        <p className="font-extrabold text-slate-900">{currencySymbol}{exp.amount.toFixed(2)}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Via {exp.paymentMethod} to {exp.paidTo}</p>
-                      </td>
+                        {/* Financials */}
+                        <td className="px-6 py-4">
+                          <p className="font-extrabold text-slate-900">{currencySymbol}{exp.amount.toFixed(2)}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">Via {exp.paymentMethod} to {exp.paidTo}</p>
+                        </td>
 
-                      {/* Payment Status */}
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${exp.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-250' :
-                          'bg-amber-50 text-amber-700 border-amber-250'
-                          }`}>
-                          {exp.paymentStatus}
-                        </span>
-                      </td>
+                        {/* Payment Status */}
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${exp.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-250' :
+                            'bg-amber-50 text-amber-700 border-amber-250'
+                            }`}>
+                            {exp.paymentStatus}
+                          </span>
+                        </td>
 
-                      {/* Receipt */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedExpense(exp);
-                              setShowVoucherModal(true);
-                            }}
-                            className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
-                          >
-                            <Eye size={13} className="text-slate-450" />
-                            View
-                          </button>
-                          {exp.receiptUrl ? (
+                        {/* Receipt */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
                             <button
-                              onClick={() => handleViewDocument(exp.receiptUrl, exp.title)}
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer hover:underline"
+                              onClick={() => {
+                                setSelectedExpense(exp);
+                                setShowVoucherModal(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
                             >
-                              <FileText size={13} /> File
+                              <Eye size={13} className="text-slate-450" />
+                              View
                             </button>
-                          ) : (
-                            <span className="text-xs text-slate-400">No File</span>
-                          )}
-                        </div>
-                      </td>
+                            {exp.receiptUrl ? (
+                              <button
+                                onClick={() => handleViewDocument(exp.receiptUrl, exp.title)}
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-500 font-semibold cursor-pointer hover:underline"
+                              >
+                                <FileText size={13} /> File
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">No File</span>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* Verification Actions */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {/* Payment Toggle */}
-                          <button
-                            onClick={() => handlePaymentToggle(exp._id, exp.paymentStatus)}
-                            className={`px-2 py-1 border text-xs font-bold rounded-lg cursor-pointer transition-all duration-200 ${exp.paymentStatus === 'Paid'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/50'
-                              : 'bg-amber-50 text-amber-755 border-amber-200 hover:bg-amber-100/50'
-                              }`}
-                            title="Toggle Payment Status"
-                          >
-                            {exp.paymentStatus === 'Paid' ? 'Paid' : 'Mark Paid'}
-                          </button>
+                        {/* Verification Actions */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {/* Payment Toggle */}
+                            <button
+                              onClick={() => handlePaymentToggle(exp._id, exp.paymentStatus)}
+                              className={`px-2 py-1 border text-xs font-bold rounded-lg cursor-pointer transition-all duration-200 ${exp.paymentStatus === 'Paid'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/50'
+                                : 'bg-amber-50 text-amber-755 border-amber-200 hover:bg-amber-100/50'
+                                }`}
+                              title="Toggle Payment Status"
+                            >
+                              {exp.paymentStatus === 'Paid' ? 'Paid' : 'Mark Paid'}
+                            </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => handleEditExpense(exp)}
-                            className="p-1.5 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-blue-200"
-                            title="Edit Record"
-                          >
-                            <Edit size={14} />
-                          </button>
+                            {/* Edit */}
+                            <button
+                              onClick={() => handleEditExpense(exp)}
+                              className="p-1.5 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-blue-200"
+                              title="Edit Record"
+                            >
+                              <Edit size={14} />
+                            </button>
 
-                          {/* Delete */}
-                          <button
-                            onClick={() => handleDeleteExpense(exp._id)}
-                            className="p-1.5 bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-red-200"
-                            title="Delete permanently"
-                          >
-                            <Trash size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                            {/* Delete */}
+                            <button
+                              onClick={() => handleDeleteExpense(exp._id)}
+                              className="p-1.5 bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-red-200"
+                              title="Delete permanently"
+                            >
+                              <Trash size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      </>
-    ) : (
+        </>
+      ) : (
         /* ================= CATEGORIES MANAGER VIEW (ADMIN ONLY) ================= */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Create Category form */}
@@ -640,7 +640,7 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Operational Cost ({currencySymbol})</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cost ({currencySymbol})</label>
                   <input
                     type="number"
                     name="amount"
@@ -765,7 +765,7 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Custom Context Notes</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Notes</label>
                   <input
                     type="text"
                     name="notes"
@@ -793,7 +793,7 @@ const Expenses = () => {
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 py-2.5 text-xs font-semibold cursor-pointer shadow-lg shadow-blue-500/10 transition-colors"
               >
-                {loading ? 'Saving Changes...' : (isEditing ? 'Save Changes' : 'Provision Log')}
+                {loading ? 'Saving Changes...' : (isEditing ? 'Save Changes' : 'Save')}
               </button>
             </div>
           </form>

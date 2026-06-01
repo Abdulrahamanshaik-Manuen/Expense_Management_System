@@ -27,6 +27,7 @@ export const createPurchaseEntry = async (req, res) => {
       invoiceNumber,
       invoiceDate,
       purchaseDate,
+      dueDate,
       subTotal,
       totalDiscount,
       transportationCharges,
@@ -73,6 +74,7 @@ export const createPurchaseEntry = async (req, res) => {
       purchaseDate: purchaseDate || new Date(),
       invoiceNumber,
       invoiceDate: invoiceDate || new Date(),
+      dueDate: dueDate || null,
       // Supplier Snapshot
       supplierName: vendorDoc.name,
       supplierGSTIN: vendorDoc.gstNumber || '',
@@ -139,6 +141,7 @@ export const getPurchaseEntries = async (req, res) => {
         plain.purchaseVoucherNumber = `PV-LEGACY-${plain._id.toString().slice(-6).toUpperCase()}`;
         plain.purchaseDate = plain.createdAt;
         plain.invoiceDate = plain.createdAt;
+        plain.dueDate = plain.createdAt;
         plain.supplierName = plain.vendor?.name || 'Legacy Vendor';
         plain.supplierGSTIN = plain.vendor?.gstNumber || '';
         plain.supplierMobileNumber = plain.vendor?.phone || '';
@@ -178,6 +181,7 @@ export const updatePurchaseEntry = async (req, res) => {
       invoiceNumber,
       invoiceDate,
       purchaseDate,
+      dueDate,
       subTotal,
       totalDiscount,
       transportationCharges,
@@ -218,6 +222,7 @@ export const updatePurchaseEntry = async (req, res) => {
     entry.invoiceNumber = invoiceNumber;
     entry.invoiceDate = invoiceDate || entry.invoiceDate;
     entry.purchaseDate = purchaseDate || entry.purchaseDate;
+    entry.dueDate = dueDate || null;
     
     // Update snapshot
     entry.supplierName = vendorDoc.name;

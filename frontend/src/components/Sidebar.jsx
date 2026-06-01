@@ -8,7 +8,8 @@ import {
   Layers,
   Users,
   ShieldCheck,
-  LogOut
+  LogOut,
+  BarChart3
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -24,6 +25,7 @@ const Sidebar = () => {
   ];
 
   if (user?.role === 'admin') {
+    navItems.push({ name: 'Analytics', path: '/analytics', icon: <BarChart3 size={20} /> });
     navItems.push({ name: 'Admin Settings', path: '/settings', icon: <ShieldCheck size={20} /> });
   }
 

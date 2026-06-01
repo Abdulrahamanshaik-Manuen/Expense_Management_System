@@ -29,6 +29,9 @@ const purchaseEntrySchema = new mongoose.Schema(
       required: true,
       default: Date.now,
     },
+    dueDate: {
+      type: Date,
+    },
     // Supplier Information Snapshot (for historical records)
     supplierName: {
       type: String,

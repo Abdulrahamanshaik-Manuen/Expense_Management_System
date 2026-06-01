@@ -560,6 +560,7 @@ export async function generatePurchaseVoucherBuffer(purchaseEntry) {
   const settings = await getSettings(purchaseEntry.companyId);
   const formattedVoucherDate = new Date(purchaseEntry.purchaseDate || Date.now()).toLocaleDateString('en-GB');
   const formattedInvoiceDate = new Date(purchaseEntry.invoiceDate || Date.now()).toLocaleDateString('en-GB');
+  const formattedDueDate = purchaseEntry.dueDate ? new Date(purchaseEntry.dueDate).toLocaleDateString('en-GB') : 'Immediate / N/A';
 
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   const bufferPromise = getStreamAsBuffer(doc);
@@ -597,15 +598,17 @@ export async function generatePurchaseVoucherBuffer(purchaseEntry) {
   }
 
   // ── Voucher Box ──────────────────────────────────────────
-  const boxW = 160; const boxH = 50; const boxX = 555 - boxW;
+  const boxW = 160; const boxH = 68; const boxX = 555 - boxW;
   doc.lineWidth(1).strokeColor('#4a5568');
   doc.rect(boxX, headerY, boxW, boxH).stroke();
-  doc.moveTo(boxX, headerY + 16).lineTo(boxX + boxW, headerY + 16).stroke();
-  doc.moveTo(boxX, headerY + 33).lineTo(boxX + boxW, headerY + 33).stroke();
+  doc.moveTo(boxX, headerY + 17).lineTo(boxX + boxW, headerY + 17).stroke();
+  doc.moveTo(boxX, headerY + 34).lineTo(boxX + boxW, headerY + 34).stroke();
+  doc.moveTo(boxX, headerY + 51).lineTo(boxX + boxW, headerY + 51).stroke();
   doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1a202c');
   doc.text(`Voucher No: ${purchaseEntry.purchaseVoucherNumber || 'N/A'}`, boxX + 6, headerY + 4);
-  doc.text(`Voucher Date: ${formattedVoucherDate}`, boxX + 6, headerY + 20);
-  doc.text(`Ref Invoice: ${purchaseEntry.invoiceNumber || 'N/A'} (${formattedInvoiceDate})`, boxX + 6, headerY + 37);
+  doc.text(`Voucher Date: ${formattedVoucherDate}`, boxX + 6, headerY + 21);
+  doc.text(`Ref Invoice: ${purchaseEntry.invoiceNumber || 'N/A'} (${formattedInvoiceDate})`, boxX + 6, headerY + 38);
+  doc.text(`Due Date: ${formattedDueDate}`, boxX + 6, headerY + 55);
 
   // ── Document Title ─────────────────────────────────────────
   doc.fontSize(22).font('Helvetica-Bold').fillColor('#1a365d').text('PURCHASE VOUCHER', 40, 100, { align: 'center' });

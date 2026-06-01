@@ -5,7 +5,7 @@ import Vendor from '../models/Vendor.js';
 // @access  Private (Admin Only)
 export const createVendor = async (req, res) => {
   try {
-    const { name, contactPerson, email, phone, address, gstNumber, paymentTerms } = req.body;
+    const { name, contactPerson, email, phone, address, gstNumber, paymentTerms, bankName, accountNumber, ifscCode, accountHolderName } = req.body;
 
     const vendorExists = await Vendor.findOne({ name });
     if (vendorExists) {
@@ -20,6 +20,10 @@ export const createVendor = async (req, res) => {
       address,
       gstNumber,
       paymentTerms,
+      bankName,
+      accountNumber,
+      ifscCode,
+      accountHolderName,
     });
 
     const createdVendor = await vendor.save();
@@ -61,7 +65,7 @@ export const getVendorById = async (req, res) => {
 // @access  Private (Admin Only)
 export const updateVendor = async (req, res) => {
   try {
-    const { name, contactPerson, email, phone, address, gstNumber, paymentTerms } = req.body;
+    const { name, contactPerson, email, phone, address, gstNumber, paymentTerms, bankName, accountNumber, ifscCode, accountHolderName } = req.body;
 
     const vendor = await Vendor.findById(req.params.id);
     if (!vendor) {
@@ -75,6 +79,12 @@ export const updateVendor = async (req, res) => {
     vendor.address = address || vendor.address;
     vendor.gstNumber = gstNumber || vendor.gstNumber;
     vendor.paymentTerms = paymentTerms || vendor.paymentTerms;
+    
+    // Explicitly update bank account details if they are provided, otherwise keep existing values
+    if (bankName !== undefined) vendor.bankName = bankName;
+    if (accountNumber !== undefined) vendor.accountNumber = accountNumber;
+    if (ifscCode !== undefined) vendor.ifscCode = ifscCode;
+    if (accountHolderName !== undefined) vendor.accountHolderName = accountHolderName;
 
     const updatedVendor = await vendor.save();
     res.json(updatedVendor);

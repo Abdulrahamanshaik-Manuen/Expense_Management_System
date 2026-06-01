@@ -15,6 +15,28 @@ import {
   Trash
 } from 'lucide-react';
 
+// Helper to generate initials/acronym from company name
+const getCompanyPrefix = (name) => {
+  if (!name) return 'MIT';
+  const upperName = name.toUpperCase().trim();
+  if (upperName.includes('MANUEN INFOTECH')) {
+    return 'MIT';
+  }
+  const words = upperName.split(/\s+/).filter(Boolean);
+  if (words.length >= 3) {
+    return words.slice(0, 3).map(w => w[0]).join('');
+  } else if (words.length === 2) {
+    const w1 = words[0];
+    const w2 = words[1];
+    if (w2.startsWith('INFO') && w2.length > 4) {
+      return w1[0] + 'IT';
+    }
+    return w1[0] + w2[0];
+  } else {
+    return upperName.slice(0, 3);
+  }
+};
+
 const Settings = () => {
   const [profiles, setProfiles] = useState([]);
   const [selectedProfile, setSelectedProfile] = useState({
@@ -213,7 +235,7 @@ const Settings = () => {
   };
 
   return (
-    <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)] select-none">
+    <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)]">
 
       {error && (
         <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs font-bold flex items-center gap-2">
@@ -634,7 +656,7 @@ const Settings = () => {
 
                   <div className="border border-black text-[7px] font-bold p-1 px-2.5 text-left w-28 bg-slate-50">
                     <div className="border-b border-black pb-0.5 mb-0.5">Date : {new Date().toLocaleDateString('en-GB')}</div>
-                    <div>Invoice No : MIT2026001</div>
+                    <div>Invoice No : {getCompanyPrefix(selectedProfile.companyName)}{new Date().getFullYear()}001</div>
                   </div>
                 </div>
 

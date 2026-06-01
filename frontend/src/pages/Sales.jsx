@@ -500,18 +500,23 @@ const Sales = () => {
                         <p className="text-[10px] text-slate-500 mt-0.5">Tax (GST): {currencySymbol}{inv.taxAmount.toLocaleString()}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className={`font-extrabold ${inv.amountDue > 0 ? 'text-red-650' : 'text-emerald-600'}`}>
-                          {currencySymbol}{inv.amountDue.toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          Status:
-                          <span className={`ml-1 inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-full ${inv.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                            inv.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              'bg-red-50 text-red-700 border border-red-200'
-                            }`}>
-                          {inv.paymentStatus}
-                          </span>
-                        </p>
+                        <div className="flex flex-col gap-0.5">
+                          <p className={`font-extrabold ${inv.amountDue > 0 ? 'text-red-650' : 'text-emerald-600'} leading-none`}>
+                            {currencySymbol}{inv.amountDue.toLocaleString()}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Paid: <span className="font-bold text-slate-700">{currencySymbol}{(inv.amountPaid || 0).toLocaleString()}</span>
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Status:
+                            <span className={`ml-1 inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-full ${inv.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                              inv.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                'bg-red-50 text-red-700 border border-red-200'
+                              }`}>
+                            {inv.paymentStatus}
+                            </span>
+                          </p>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -1114,12 +1119,14 @@ const Sales = () => {
           return { name, qty, price, discount, taxRate, subtotal, taxAmount, total };
         });
 
-        const totalAmountVal = Number(selectedInvoice.totalAmount || selectedInvoice.total || itemsList.reduce((acc, item) => acc + item.total, 0)) || 0;
-        const taxAmountVal   = Number(selectedInvoice.taxAmount)   || (totalAmountVal * 18 / 118);
-        const cgstVal        = taxAmountVal / 2;
-        const sgstVal        = taxAmountVal / 2;
-        const baseAmountVal  = totalAmountVal - taxAmountVal;
-        const totalQuantity  = (selectedInvoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+        const totalAmountVal  = Number(selectedInvoice.totalAmount || selectedInvoice.total || itemsList.reduce((acc, item) => acc + item.total, 0)) || 0;
+        const taxAmountVal    = Number(selectedInvoice.taxAmount)   || (totalAmountVal * 18 / 118);
+        const cgstVal         = taxAmountVal / 2;
+        const sgstVal         = taxAmountVal / 2;
+        const baseAmountVal   = totalAmountVal - taxAmountVal;
+        const totalQuantity   = (selectedInvoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+        const amountPaidVal   = Number(selectedInvoice.amountPaid || 0);
+        const amountDueVal    = Number(selectedInvoice.amountDue !== undefined ? selectedInvoice.amountDue : (totalAmountVal - amountPaidVal));
 
         return (
           <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in text-slate-800">
@@ -1292,6 +1299,24 @@ const Sales = () => {
                         <td className="border-r border-black p-2 text-center">{totalQuantity} Months</td>
                         <td className="p-2 text-right">{totalAmountVal.toLocaleString()}/-</td>
                       </tr>
+                      {amountPaidVal > 0 && (
+                        <>
+                          <tr className="font-bold border-t border-black h-7 text-black">
+                            <td className="border-r border-black p-2 text-left text-emerald-700">Amount Paid:</td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="p-2 text-right text-emerald-700">-{amountPaidVal.toLocaleString()}/-</td>
+                          </tr>
+                          <tr className="bg-[#e8e5d3] font-bold border-t border-black h-7 text-black">
+                            <td className="border-r border-black p-2 text-left text-red-650">Amount Due:</td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="p-2 text-right text-red-650">{amountDueVal.toLocaleString()}/-</td>
+                          </tr>
+                        </>
+                      )}
                     </tbody>
                   </table>
                 </div>

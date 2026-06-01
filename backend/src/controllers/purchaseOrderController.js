@@ -50,7 +50,7 @@ export const createPurchaseOrder = async (req, res) => {
       taxAmount,
       totalAmount,
       createdBy: req.user._id,
-      status: 'Draft',
+      status: req.body.status || 'Draft',
       companyId: companyId || '6a0d837fd7ace7063e6a8379',
     });
 

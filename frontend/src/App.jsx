@@ -12,11 +12,12 @@ import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Analytics from './pages/Analytics';
 
 // Layout wrapper
 const Layout = () => {
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden select-none">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header />
@@ -43,6 +44,7 @@ function App() {
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>

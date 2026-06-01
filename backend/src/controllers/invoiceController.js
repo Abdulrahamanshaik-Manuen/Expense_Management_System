@@ -1,7 +1,30 @@
 import Invoice from '../models/Invoice.js';
 import SaleInvoice from '../models/SaleInvoice.js';
+import CompanySetting from '../models/CompanySetting.js';
 import { generateInvoiceBuffer, generateSalesInvoicePDF } from '../utils/generateInvoice.js';
 import asyncHandler from 'express-async-handler';
+
+// Helper to generate initials/acronym from company name
+const getCompanyPrefix = (name) => {
+  if (!name) return 'MIT';
+  const upperName = name.toUpperCase().trim();
+  if (upperName.includes('MANUEN INFOTECH')) {
+    return 'MIT';
+  }
+  const words = upperName.split(/\s+/).filter(Boolean);
+  if (words.length >= 3) {
+    return words.slice(0, 3).map(w => w[0]).join('');
+  } else if (words.length === 2) {
+    const w1 = words[0];
+    const w2 = words[1];
+    if (w2.startsWith('INFO') && w2.length > 4) {
+      return w1[0] + 'IT';
+    }
+    return w1[0] + w2[0];
+  } else {
+    return upperName.slice(0, 3);
+  }
+};
 
 // =============================================
 // SALE INVOICE endpoints (used by Sales page)
@@ -58,13 +81,43 @@ export const createInvoice = asyncHandler(async (req, res) => {
     paymentStatus = 'Partial';
   }
 
-  // Generate invoice number
+  // Generate invoice number dynamically
   const currentYear = new Date().getFullYear();
-  const prefix = `MIT${currentYear}`;
+  let companyPrefix = 'MIT';
+  if (companyId) {
+    const company = await CompanySetting.findById(companyId);
+    if (company && company.companyName) {
+      companyPrefix = getCompanyPrefix(company.companyName);
+    }
+  } else {
+    const defaultCompany = await CompanySetting.findOne();
+    if (defaultCompany && defaultCompany.companyName) {
+      companyPrefix = getCompanyPrefix(defaultCompany.companyName);
+    }
+  }
+
+  const prefix = `${companyPrefix}${currentYear}`;
   const count = await SaleInvoice.countDocuments({
     invoiceNumber: new RegExp(`^${prefix}`),
   });
-  const sequentialNum = String(count + 1).padStart(3, '0');
+  
+  // Find highest serial number to avoid duplicate generation if previous invoices were deleted
+  let nextNum = count + 1;
+  const lastInvoice = await SaleInvoice.findOne({
+    invoiceNumber: new RegExp(`^${prefix}`),
+  }).sort({ invoiceNumber: -1 });
+
+  if (lastInvoice && lastInvoice.invoiceNumber) {
+    const match = lastInvoice.invoiceNumber.match(/\d+$/);
+    if (match) {
+      const lastSerial = parseInt(match[0].slice(-3), 10);
+      if (!isNaN(lastSerial) && lastSerial >= nextNum) {
+        nextNum = lastSerial + 1;
+      }
+    }
+  }
+
+  const sequentialNum = String(nextNum).padStart(3, '0');
   const invoiceNumber = `${prefix}${sequentialNum}`;
 
 
@@ -106,7 +159,7 @@ export const createInvoice = asyncHandler(async (req, res) => {
 // @route   GET /api/invoices
 // @access  Private
 export const getInvoices = asyncHandler(async (req, res) => {
-  const invoices = await SaleInvoice.find({}).populate('createdBy', 'name email').populate('companyId');
+  const invoices = await SaleInvoice.find({}).sort({ createdAt: -1 }).populate('createdBy', 'name email').populate('companyId');
   
   // Dynamic self-healing: generate PDFs for any legacy invoices missing a pdfUrl
   for (let inv of invoices) {

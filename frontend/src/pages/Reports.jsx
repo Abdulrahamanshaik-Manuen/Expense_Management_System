@@ -23,7 +23,6 @@ import {
   ChevronRight,
   Sparkles,
   TrendingDown,
-  BookOpen,
   FileText,
   Activity
 } from 'lucide-react';
@@ -49,7 +48,7 @@ function priceToWords(price) {
 }
 
 const Reports = () => {
-  const [activeTab, setActiveTab] = useState('expenses'); // expenses, purchases, sales, financials
+  const [activeTab, setActiveTab] = useState('expenses'); // expenses, purchases, sales
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,7 +63,6 @@ const Reports = () => {
   const [purchaseEntries, setPurchaseEntries] = useState([]);
   const [invoices, setInvoices] = useState([]); // SaleInvoices
   const [companyProfiles, setCompanyProfiles] = useState([]);
-  const [financialsData, setFinancialsData] = useState(null);
 
   // Preview & Download States
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -91,22 +89,18 @@ const Reports = () => {
     try {
       setLoading(true);
       setError('');
-      const [expRes, catRes, purchaseRes, invRes, settingsRes, finRes] = await Promise.all([
+      const [expRes, catRes, purchaseRes, invRes, settingsRes] = await Promise.all([
         API.get('/expenses'),
         API.get('/expense-categories'),
         API.get('/purchase-entries'),
         API.get('/invoices'),
-        API.get('/settings'),
-        API.get('/accounting/reports/financials').catch(() => ({ data: null }))
+        API.get('/settings')
       ]);
       setExpenses(expRes.data);
       setCategories(catRes.data);
       setPurchaseEntries(purchaseRes.data);
       setInvoices(invRes.data);
       setCompanyProfiles(settingsRes.data);
-      if (finRes && finRes.data) {
-        setFinancialsData(finRes.data);
-      }
       if (settingsRes.data?.length > 0) {
         setSelectedCompanyId(settingsRes.data[0]._id);
       }
@@ -300,15 +294,13 @@ const Reports = () => {
           </div>
         </div>
 
-        {activeTab !== 'financials' && (
-          <button
-            onClick={downloadCSVReport}
-            className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-500/10 hover:-translate-y-0.5 transition-all w-full md:w-auto"
-          >
-            <FileSpreadsheet size={14} />
-            Download CSV Report
-          </button>
-        )}
+        <button
+          onClick={downloadCSVReport}
+          className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer shadow-lg shadow-emerald-500/10 hover:-translate-y-0.5 transition-all w-full md:w-auto"
+        >
+          <FileSpreadsheet size={14} />
+          Download CSV Report
+        </button>
       </div>
 
       {/* ── FILTER TOOLBAR ───────────────────────────────────────── */}
@@ -390,15 +382,6 @@ const Reports = () => {
             }`}
         >
           <TrendingUp size={14} /> Sales Report ({filteredInvoices.length})
-        </button>
-        <button
-          onClick={() => { setActiveTab('financials'); setSearchTerm(''); }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer uppercase tracking-wider ${activeTab === 'financials'
-            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-            : 'text-slate-500 hover:text-slate-800 hover:bg-white'
-            }`}
-        >
-          <BookOpen size={14} /> Accounts & Financials
         </button>
       </div>
 
@@ -745,126 +728,6 @@ const Reports = () => {
                 </div>
               </div>
             </>
-          )}
-
-          {/* ================= TAB 4: ACCOUNTS & DOUBLE-ENTRY FINANCIALS ================= */}
-          {activeTab === 'financials' && financialsData && (
-            <div className="space-y-6">
-              
-              {/* KPIs */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  <span className="text-[10px] font-bold text-slate-550 uppercase block mb-1">Total Sales Revenue</span>
-                  <h3 className="text-xl font-black text-slate-900">₹{(financialsData.revenue?.salesRevenue || 0).toLocaleString()}</h3>
-                  <p className="text-[10px] text-slate-400 mt-1">Realized & outstanding invoices value</p>
-                </div>
-                
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-red-500/10">
-                  <span className="text-[10px] font-bold text-slate-550 block mb-1 uppercase text-red-500">Total Expenses</span>
-                  <h3 className="text-xl font-black text-red-650">₹{(financialsData.expenses?.totalExpenses || 0).toLocaleString()}</h3>
-                  <p className="text-[10px] text-slate-400 mt-1">Purchases, Overheads & business spends</p>
-                </div>
-
-                <div className={`bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ${financialsData.netProfit >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'}`}>
-                  <span className="text-[10px] font-bold block mb-1 uppercase text-slate-500">Net Profit / Loss</span>
-                  <h3 className={`text-xl font-black ${financialsData.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                    ₹{financialsData.netProfit.toLocaleString()}
-                  </h3>
-                  <p className="text-[10px] text-slate-400 mt-1">Revenue minus accumulated expenses</p>
-                </div>
-
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-blue-500/10">
-                  <span className="text-[10px] font-bold text-slate-550 block mb-1 uppercase text-blue-500">Cash / Bank Balance</span>
-                  <h3 className="text-xl font-black text-blue-600">₹{(financialsData.ledgerBalances?.netCashBalance || 0).toLocaleString()}</h3>
-                  <p className="text-[10px] text-slate-400 mt-1">Baseline deposits minus operational flows</p>
-                </div>
-              </div>
-
-              {/* Profit & Loss Sheet */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-                <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
-                  <h4 className="font-extrabold text-sm text-slate-800">Dynamic Profit & Loss (P&L) Statement</h4>
-                  <Activity size={16} className="text-blue-500" />
-                </div>
-
-                <div className="text-xs divide-y divide-slate-100 font-semibold space-y-2">
-                  <div className="flex justify-between py-2 font-bold text-slate-900 text-sm">
-                    <span>1. Sales Revenue (Credited)</span>
-                    <span>₹{(financialsData.revenue?.salesRevenue || 0).toLocaleString()}</span>
-                  </div>
-                  
-                  <div className="pt-2 font-bold text-slate-700">
-                    <span>2. Less: Cost of Procurement Purchases & Expenses</span>
-                  </div>
-                  
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• Inventory Purchases</span>
-                    <span>-₹{(financialsData.expenses?.purchasesExpense || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• Transportation & Logistics</span>
-                    <span>-₹{(financialsData.expenses?.transportExpense || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• Packing Overhead Charges</span>
-                    <span>-₹{(financialsData.expenses?.packingExpense || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• Loading/Unloading Costs</span>
-                    <span>-₹{(financialsData.expenses?.loadingExpense || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• Miscellaneous Procurement Expenses</span>
-                    <span>-₹{(financialsData.expenses?.miscProcureExpense || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1.5 pl-4 text-slate-600">
-                    <span>• General Operational Expenses</span>
-                    <span>-₹{(financialsData.expenses?.businessExpenses || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex justify-between py-2 border-t border-slate-200 font-bold text-slate-900 text-sm">
-                    <span>Net Operating Profit</span>
-                    <span className={financialsData.netProfit >= 0 ? 'text-emerald-600 font-black' : 'text-red-600 font-black'}>
-                      ₹{financialsData.netProfit.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* General Ledger Balance sheet aggregates */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-                <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
-                  <h4 className="font-extrabold text-sm text-slate-800">Dynamic Double-Entry Ledgers Audits Balance</h4>
-                  <Landmark size={16} className="text-blue-500" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs font-semibold">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated Cash / Bank Account</p>
-                    <p className="font-black text-blue-600 text-base">₹{(financialsData.ledgerBalances?.netCashBalance || 0).toLocaleString()}</p>
-                    <p className="text-[9px] text-slate-500 font-normal mt-1 leading-relaxed">Represents net bank cash position (Initial credit + sales collections minus purchases & expense payouts).</p>
-                  </div>
-                  
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accounts Receivable (Debtors)</p>
-                    <p className="font-black text-emerald-600 text-base">₹{(financialsData.ledgerBalances?.outstandingReceivables || 0).toLocaleString()}</p>
-                    <p className="text-[9px] text-slate-500 font-normal mt-1 leading-relaxed">Outstanding collections dues owed from customers on generated sales invoices.</p>
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accounts Payable (Creditors)</p>
-                    <p className="font-black text-red-650 text-base">₹{(financialsData.ledgerBalances?.outstandingPayables || 0).toLocaleString()}</p>
-                    <p className="text-[9px] text-slate-500 font-normal mt-1 leading-relaxed">Total outstanding liabilities owed to suppliers under purchase vouchers ledger statements.</p>
-                  </div>
-                </div>
-              </div>
-
-            </div>
           )}
 
         </div>

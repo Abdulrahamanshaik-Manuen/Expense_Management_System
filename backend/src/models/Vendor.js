@@ -28,6 +28,18 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: 'Net 30',
     },
+    bankName: {
+      type: String,
+    },
+    accountNumber: {
+      type: String,
+    },
+    ifscCode: {
+      type: String,
+    },
+    accountHolderName: {
+      type: String,
+    },
   },
   {
     timestamps: true,
