@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 
+
 const expenseSchema = new mongoose.Schema(
   {
     title: {
@@ -60,3 +61,4 @@ const expenseSchema = new mongoose.Schema(
 const Expense = mongoose.model('Expense', expenseSchema);
 
 export default Expense;
+

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { capturePreviewAsPDF } from '../utils/capturePreviewAsPDF';
 import API from '../services/api';
 import {
   Plus,
@@ -19,14 +20,30 @@ import {
   Edit
 } from 'lucide-react';
 
-/** Indian Currency Number-to-Words */
-function priceToWords(price) {
+/** Indian/Western Currency Number-to-Words */
+function priceToWords(price, currency = 'INR') {
+  const isUSD = currency === 'USD';
+  const unitName = isUSD ? 'Dollars' : 'Rupees';
+
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
     'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
-  if (num === 0) return 'Zero Rupees only';
+  if (num === 0) return `Zero ${unitName} only`;
+
+  if (isUSD) {
+    function toWordsUSD(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
+      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
+      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
+      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
+      return 'Overflow';
+    }
+    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
+  }
+
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';
@@ -35,7 +52,7 @@ function priceToWords(price) {
   str += (Number(n[2]) !== 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
   str += (Number(n[3]) !== 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
   str += (Number(n[4]) !== 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
-  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + 'Rupees ' : 'Rupees ';
+  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + unitName + ' ' : unitName + ' ';
   return str.trim() + ' only';
 }
 
@@ -54,10 +71,15 @@ const Sales = () => {
   const [filterMonth, setFilterMonth] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
 
-  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+  const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
+  const activeCurrency = activeCompany?.currency || 'INR';
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
 
   const filteredInvoices = invoices.filter(inv => {
+    const matchCompany = !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
     const matchMonth = filterMonth === 'All' || (invDate.getMonth() + 1) === parseInt(filterMonth);
     const matchYear = filterYear === 'All' || invDate.getFullYear() === parseInt(filterYear);
@@ -130,6 +152,9 @@ const Sales = () => {
   const [payReceiptVal, setPayReceiptVal] = useState({});
   // Download state for invoice buttons
   const [downloadingInvId, setDownloadingInvId] = useState(null);
+  const [capturingPDF, setCapturingPDF] = useState(false);
+  // Ref for the preview paper sheet element
+  const invoicePaperRef = useRef(null);
 
   useEffect(() => {
     const userString = localStorage.getItem('user');
@@ -151,9 +176,10 @@ const Sales = () => {
       setProducts(prodRes.data);
       setCompanyProfiles(settingsRes.data);
       if (settingsRes.data && settingsRes.data.length > 0) {
+        const activeId = localStorage.getItem('selectedCompanyId') || settingsRes.data[0]._id;
         setInvoiceForm(prev => ({
           ...prev,
-          companyId: settingsRes.data[0]._id
+          companyId: activeId
         }));
       }
     } catch (err) {
@@ -258,7 +284,7 @@ const Sales = () => {
         customerAddress: '',
         customerGst: '',
         amountPaid: '0',
-        companyId: companyProfiles[0]?._id || '',
+        companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
         items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
       });
       setIsEditing(false);
@@ -322,7 +348,7 @@ const Sales = () => {
       customerAddress: '',
       customerGst: '',
       amountPaid: '0',
-      companyId: companyProfiles[0]?._id || '',
+      companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
       items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
     });
   };
@@ -378,7 +404,7 @@ const Sales = () => {
                   customerAddress: '',
                   customerGst: '',
                   amountPaid: '0',
-                  companyId: companyProfiles[0]?._id || '',
+                  companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
                   items: [{ name: '', quantity: 1, price: '', discount: 0, taxRate: 18 }],
                 });
                 setShowAddInvoice(true);
@@ -1158,7 +1184,7 @@ const Sales = () => {
               </div>
 
               {/* HIGH FIDELITY PAPER SHEET (MATCHES PDF EXACTLY) */}
-              <div className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
+              <div ref={invoicePaperRef} className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
                 
                 {/* Meta details & branding header */}
                 <div className="flex flex-row justify-between items-start gap-4 pb-4">
@@ -1167,16 +1193,16 @@ const Sales = () => {
                     {activeBiller.logoSquareUrl ? (
                       <div className="flex items-center gap-3">
                         <img 
-                          src={activeBiller.logoSquareUrl.startsWith('http') ? activeBiller.logoSquareUrl : `http://localhost:5000${activeBiller.logoSquareUrl}`} 
+                          src={activeBiller.logoSquareUrl.startsWith('http') || activeBiller.logoSquareUrl.startsWith('data:') ? activeBiller.logoSquareUrl : `http://localhost:5000${activeBiller.logoSquareUrl}`} 
                           alt="Company Logo" 
-                          className="w-10 h-10 object-contain"
+                          className="w-20 h-20 object-contain"
                           onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         {activeBiller.logoUrl ? (
                           <img 
-                            src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
+                            src={activeBiller.logoUrl.startsWith('http') || activeBiller.logoUrl.startsWith('data:') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                             alt="Brand Logo" 
-                            className="h-10 object-contain"
+                            className="h-20 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
@@ -1185,9 +1211,9 @@ const Sales = () => {
                       </div>
                     ) : activeBiller.logoUrl ? (
                       <img 
-                        src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
+                        src={activeBiller.logoUrl.startsWith('http') || activeBiller.logoUrl.startsWith('data:') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                         alt="Brand Logo" 
-                        className="h-10 object-contain"
+                        className="h-20 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
@@ -1208,10 +1234,10 @@ const Sales = () => {
                     )}
                   </div>
 
-                  {/* Date & Invoice Rectangular Box */}
-                  <div className="border border-black px-3.5 py-2 w-44 text-[10px] font-bold text-black flex flex-col justify-center divide-y divide-black gap-1.5 bg-white select-none">
-                    <div className="pb-1">Date : {new Date(selectedInvoice.invoiceDate || selectedInvoice.date || selectedInvoice.createdAt).toLocaleDateString('en-GB')}</div>
-                    <div className="pt-1">Invoice No : {selectedInvoice.invoiceNumber || 'N/A'}</div>
+                  {/* Date & Invoice Info (No Box) */}
+                  <div className="text-[10px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
+                    <div>Date : {new Date(selectedInvoice.invoiceDate || selectedInvoice.date || selectedInvoice.createdAt).toLocaleDateString('en-GB')}</div>
+                    <div>Invoice No : {selectedInvoice.invoiceNumber || 'N/A'}</div>
                   </div>
                 </div>
 
@@ -1355,13 +1381,7 @@ const Sales = () => {
 
                 {/* Amount in words & Bank details */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-[10px] text-black pt-4 border-t border-slate-200">
-                  {/* Amount in words (Left - 7 cols) */}
-                  <div className="md:col-span-6 space-y-1">
-                    <p className="text-slate-500 font-medium select-none">Total Amount (in words):</p>
-                    <p className="font-bold text-black pr-4">{priceToWords(totalAmountVal)}</p>
-                  </div>
-                  
-                  {/* Banking Details (Right - 5 cols) */}
+                  {/* Banking Details (Left - 6 cols) */}
                   <div className="md:col-span-6 space-y-1">
                     <h5 className="font-bold text-black uppercase tracking-wide select-none">Company's Bank Details</h5>
                     <div className="pl-2 space-y-0.5 text-slate-800">
@@ -1370,6 +1390,12 @@ const Sales = () => {
                       <p><span className="text-slate-500 select-none">Account No :</span> <span className="font-bold text-black tracking-wider">{activeBiller.bankAccountNumber || activeBiller.accountNumber || 'N/A'}</span></p>
                       <p><span className="text-slate-500 select-none">Branch & IFS Code :</span> <span className="font-bold text-black">{activeBiller.ifscCode || 'N/A'}</span></p>
                     </div>
+                  </div>
+
+                  {/* Amount in words (Right - 6 cols) */}
+                  <div className="md:col-span-6 space-y-1 md:pl-6 md:border-l md:border-slate-200">
+                    <p className="text-slate-500 font-medium select-none">Total Amount (in words):</p>
+                    <p className="font-bold text-black pr-4">{priceToWords(totalAmountVal, activeBiller.currency)}</p>
                   </div>
                 </div>
 
@@ -1387,6 +1413,27 @@ const Sales = () => {
 
               {/* Action buttons footer */}
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  onClick={() => capturePreviewAsPDF(
+                    invoicePaperRef.current,
+                    selectedInvoice.invoiceNumber || 'invoice',
+                    () => setCapturingPDF(true),
+                    () => setCapturingPDF(false)
+                  )}
+                  disabled={capturingPDF}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                >
+                  <Download size={14} />
+                  {capturingPDF ? 'Capturing...' : 'Download PDF'}
+                </button>
+                <button
+                  onClick={() => downloadInvoice(selectedInvoice._id, selectedInvoice.invoiceNumber, 'docx', selectedInvoice.companyId?._id || selectedInvoice.companyId || '')}
+                  disabled={downloadingInvId === selectedInvoice._id}
+                  className="px-5 py-2.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                >
+                  <Download size={14} />
+                  {downloadingInvId === selectedInvoice._id ? 'Downloading...' : 'Download Word'}
+                </button>
                 <button
                   onClick={() => {
                     setShowPreviewModal(false);

@@ -1,18 +1,8 @@
 import multer from 'multer';
 import path from 'path';
 
-// Set storage engine
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    cb(
-      null,
-      `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`
-    );
-  },
-});
+// Set memory storage engine (stores file as buffer in memory)
+const storage = multer.memoryStorage();
 
 // Check file type
 function checkFileType(file, cb) {
@@ -38,3 +28,4 @@ export const upload = multer({
     checkFileType(file, cb);
   },
 });
+

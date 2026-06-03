@@ -9,7 +9,8 @@ import {
   Users,
   ShieldCheck,
   LogOut,
-  BarChart3
+  BarChart3,
+  Building
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -26,7 +27,8 @@ const Sidebar = () => {
 
   if (user?.role === 'admin') {
     navItems.push({ name: 'Analytics', path: '/analytics', icon: <BarChart3 size={20} /> });
-    navItems.push({ name: 'Admin Settings', path: '/settings', icon: <ShieldCheck size={20} /> });
+    navItems.push({ name: 'Company', path: '/company', icon: <Building size={20} /> });
+    navItems.push({ name: 'Settings', path: '/settings', icon: <ShieldCheck size={20} /> });
   }
 
   const handleLogout = () => {
@@ -36,16 +38,16 @@ const Sidebar = () => {
   };
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col h-screen sticky top-0 border-r border-slate-800 shadow-xl shadow-slate-900/10">
+    <aside className="w-64 bg-slate-950 text-slate-100 flex flex-col h-screen sticky top-0 border-r border-slate-900/50 shadow-xl shadow-slate-950/10">
       {/* Brand Logo */}
-      <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+      <div className="p-6 border-b border-slate-900 flex items-center gap-3">
         <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30 animate-pulse">
           E
         </div>
         <div>
           <h1 className="font-extrabold text-lg leading-none tracking-tight text-white">Expense</h1>
           <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-            Admin Panel
+            Management System
           </span>
         </div>
       </div>
@@ -59,7 +61,7 @@ const Sidebar = () => {
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-xs font-bold uppercase tracking-wider ${isActive
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'
               }`
             }
           >
@@ -70,10 +72,10 @@ const Sidebar = () => {
       </nav>
 
       {/* User Badge Info & Logout */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-3">
+      <div className="p-4 border-t border-slate-900 bg-slate-950/40 space-y-3">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 text-slate-300 hover:bg-red-950/30 hover:border-red-900/50 hover:text-red-400 text-xs font-bold transition-all duration-200 cursor-pointer bg-slate-900/60 shadow-sm"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-900 text-slate-300 hover:bg-red-950/30 hover:border-red-900/50 hover:text-red-400 text-xs font-bold transition-all duration-200 cursor-pointer bg-slate-900/30 shadow-sm"
         >
           <LogOut size={14} />
           Logout

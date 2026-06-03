@@ -24,17 +24,34 @@ import {
   Eye,
   X,
   FileSpreadsheet,
-  BookOpen
+  BookOpen,
+  Download
 } from 'lucide-react';
 
-/** Indian Currency Number-to-Words */
-function priceToWords(price) {
+/** Indian/Western Currency Number-to-Words */
+function priceToWords(price, currency = 'INR') {
+  const isUSD = currency === 'USD';
+  const unitName = isUSD ? 'Dollars' : 'Rupees';
+
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
     'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
-  if (num === 0) return 'Zero Rupees only';
+  if (num === 0) return `Zero ${unitName} only`;
+
+  if (isUSD) {
+    function toWordsUSD(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
+      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
+      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
+      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
+      return 'Overflow';
+    }
+    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
+  }
+
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';
@@ -43,7 +60,7 @@ function priceToWords(price) {
   str += (Number(n[2]) !== 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
   str += (Number(n[3]) !== 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
   str += (Number(n[4]) !== 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
-  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + 'Rupees ' : 'Rupees ';
+  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + unitName + ' ' : unitName + ' ';
   return str.trim() + ' only';
 }
 
@@ -62,10 +79,15 @@ const Purchases = () => {
   const [filterMonth, setFilterMonth] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
 
-  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+  const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
+  const activeCurrency = activeCompany?.currency || 'INR';
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
 
   const filteredEntries = entries.filter(entry => {
+    const matchCompany = !activeCompanyId || (entry.companyId?._id || entry.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const entryDate = new Date(entry.purchaseDate || entry.createdAt);
     const matchMonth = filterMonth === 'All' || (entryDate.getMonth() + 1) === parseInt(filterMonth);
     const matchYear = filterYear === 'All' || entryDate.getFullYear() === parseInt(filterYear);
@@ -73,6 +95,9 @@ const Purchases = () => {
   });
 
   const filteredOrders = orders.filter(po => {
+    const matchCompany = !activeCompanyId || (po.companyId?._id || po.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const poDate = new Date(po.createdAt);
     const matchMonth = filterMonth === 'All' || (poDate.getMonth() + 1) === parseInt(filterMonth);
     const matchYear = filterYear === 'All' || poDate.getFullYear() === parseInt(filterYear);
@@ -254,13 +279,14 @@ const Purchases = () => {
         setEntryForm(prev => ({
           ...prev,
           vendor: venRes.data[0]._id,
-          companyId: settingsRes.data[0]?._id || ''
+          companyId: localStorage.getItem('selectedCompanyId') || settingsRes.data[0]?._id || ''
         }));
       }
       // Auto-prefills first company setting
       if (settingsRes.data.length > 0) {
-        setPoForm(prev => ({ ...prev, companyId: settingsRes.data[0]._id }));
-        setEntryForm(prev => ({ ...prev, companyId: settingsRes.data[0]._id }));
+        const activeId = localStorage.getItem('selectedCompanyId') || settingsRes.data[0]._id;
+        setPoForm(prev => ({ ...prev, companyId: activeId }));
+        setEntryForm(prev => ({ ...prev, companyId: activeId }));
       }
     } catch (err) {
       console.error('Error fetching procurement details:', err);
@@ -378,7 +404,7 @@ const Purchases = () => {
       setPoForm({
         vendor: vendors[0]?._id || '',
         items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
-        companyId: companyProfiles[0]?._id || '',
+        companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
         status: 'Draft',
       });
       setIsEditingOrder(false);
@@ -431,7 +457,7 @@ const Purchases = () => {
     setPoForm({
       vendor: vendors[0]?._id || '',
       items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
-      companyId: companyProfiles[0]?._id || '',
+      companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
     });
   };
 
@@ -633,7 +659,7 @@ const Purchases = () => {
         paymentReferenceNumber: '',
         notes: '',
         items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
-        companyId: companyProfiles[0]?._id || '',
+        companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
       });
       setInvoiceFile(null);
       setIsEditingEntry(false);
@@ -729,8 +755,8 @@ const Purchases = () => {
   };
 
   // Compute metrics dynamically
-  const totalDues = entries.reduce((sum, item) => sum + (item.amountDue || 0), 0);
-  const totalPOAmount = orders.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+  const totalDues = filteredEntries.reduce((sum, item) => sum + (item.amountDue || 0), 0);
+  const totalPOAmount = filteredOrders.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
 
   return (
     <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)]">
@@ -831,7 +857,7 @@ const Purchases = () => {
                   paymentReferenceNumber: '',
                   notes: '',
                   items: [{ name: '', code: '', quantity: 1, unit: 'Pcs', price: '', discountType: 'percentage', discountValue: 0, discountAmount: 0, totalItemAmount: 0 }],
-                  companyId: companyProfiles[0]?._id || '',
+                  companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
                 });
                 setInvoiceFile(null);
                 setShowAddEntry(true);
@@ -849,7 +875,7 @@ const Purchases = () => {
                 setPoForm({
                   vendor: vendors[0]?._id || '',
                   items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
-                  companyId: companyProfiles[0]?._id || '',
+                  companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
                   status: 'Draft',
                 });
                 setShowAddOrder(true);
@@ -1392,20 +1418,7 @@ const Purchases = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
-                  <select
-                    required
-                    value={poForm.companyId}
-                    onChange={(e) => setPoForm({ ...poForm, companyId: e.target.value })}
-                    className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    {companyProfiles.map((profile) => (
-                      <option key={profile._id} value={profile._id}>{profile.companyName}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Select Supplier Vendor</label>
@@ -1550,20 +1563,7 @@ const Purchases = () => {
               {/* SECTION A: Supplier & Company Profile */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
                 <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">A. Supplier & Corporate Profiles</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
-                    <select
-                      required
-                      value={entryForm.companyId}
-                      onChange={(e) => handleEntryFieldChange('companyId', e.target.value)}
-                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                    >
-                      {companyProfiles.map((profile) => (
-                        <option key={profile._id} value={profile._id}>{profile.companyName}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Select Supplier Vendor</label>
@@ -1901,7 +1901,7 @@ const Purchases = () => {
               </div>
 
               {/* SECTION G: Summary details */}
-              <div className="bg-slate-900 text-slate-100 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="bg-slate-950 text-slate-100 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Financial Voucher Summary</h4>
                 </div>
@@ -1949,9 +1949,10 @@ const Purchases = () => {
               </div>
               <div className="flex items-center gap-3">
                 <a
-                  href={`http://localhost:5000${docUrl}`}
+                  href={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  download="invoice"
                   className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all"
                 >
                   Download Invoice
@@ -1966,15 +1967,15 @@ const Purchases = () => {
             </div>
 
             <div className="flex-1 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center relative">
-              {docUrl.toLowerCase().endsWith('.pdf') ? (
+              {docUrl.toLowerCase().startsWith('data:application/pdf') || docUrl.toLowerCase().endsWith('.pdf') ? (
                 <iframe
-                  src={`http://localhost:5000${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   className="w-full h-full border-0"
                   title="Document Preview"
                 />
               ) : (
                 <img
-                  src={`http://localhost:5000${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   alt="Document Preview"
                   className="max-w-full max-h-full object-contain"
                 />
@@ -2026,27 +2027,59 @@ const Purchases = () => {
                 <div className="flex flex-row justify-between items-start gap-4 pb-4 border-b border-slate-300">
                   <div className="flex items-center gap-3">
                     {activeCompany.logoSquareUrl ? (
-                      <div className="w-10 h-10 bg-white rounded-md flex items-center justify-center overflow-hidden border border-slate-200 p-0.5">
-                        <img src={`http://localhost:5000${activeCompany.logoSquareUrl}`} alt="Logo Icon" className="max-w-full max-h-full object-contain" />
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={activeCompany.logoSquareUrl.startsWith('data:') || activeCompany.logoSquareUrl.startsWith('http') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`} 
+                          alt="Company Logo" 
+                          className="w-20 h-20 object-contain" 
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {activeCompany.logoUrl ? (
+                          <img 
+                            src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                            alt="Brand Logo" 
+                            className="h-20 object-contain" 
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div>
+                            <h2 className="text-base font-black text-[#002e6e] uppercase tracking-tight">
+                              {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
+                            </h2>
+                            <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.1em] uppercase leading-none">
+                              {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}Official Purchase Requisition
+                            </p>
+                          </div>
+                        )}
                       </div>
+                    ) : activeCompany.logoUrl ? (
+                      <img 
+                        src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                        alt="Brand Logo" 
+                        className="h-20 object-contain" 
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
                     ) : (
-                      <div className="relative w-8 h-8 bg-[#002e6e] flex items-center justify-center font-black text-white text-xs select-none">
-                        {(activeCompany.companyName || 'M')[0]}
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-8 h-8 bg-[#002e6e] flex items-center justify-center font-black text-white text-xs select-none">
+                          {(activeCompany.companyName || 'M')[0]}
+                        </div>
+                        <div>
+                          <h2 className="text-sm font-black text-[#002e6e] uppercase tracking-tight">
+                            {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
+                          </h2>
+                          <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.1em] uppercase leading-none">
+                            {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}Official Purchase Requisition
+                          </p>
+                        </div>
                       </div>
                     )}
-                    <div>
-                      <h2 className="text-sm font-black text-[#002e6e] uppercase tracking-tight">
-                        {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
-                      </h2>
-                      <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.1em] uppercase leading-none">
-                        {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}Official Purchase Requisition
-                      </p>
-                    </div>
                   </div>
 
-                  <div className="border border-black px-3.5 py-1.5 w-48 text-[9px] font-bold text-black flex flex-col justify-center gap-1 bg-white select-none">
+                  {/* Date & PO Info (No Box) */}
+                  <div className="text-[9px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
                     <div>Date : {new Date(selectedPo.createdAt).toLocaleDateString('en-GB')}</div>
-                    <div className="border-t border-slate-200 pt-1">PO No : {selectedPo.poNumber}</div>
+                    <div>PO No : {selectedPo.poNumber}</div>
                   </div>
                 </div>
 
@@ -2087,7 +2120,7 @@ const Purchases = () => {
                     <p className="text-slate-700 leading-normal">{activeCompany.address}</p>
                     {activeCompany.mobile && <p><span className="text-slate-500 font-semibold select-none">Mobile No:</span> {activeCompany.mobile}</p>}
                     <p><span className="text-slate-500 font-semibold select-none">Payment Terms:</span> <span className="font-bold text-slate-800">{selectedPo.vendor?.paymentTerms || 'Net 30'}</span></p>
-                    <p><span className="text-slate-500 font-semibold select-none">Requisitioner:</span> Procurement Admin</p>
+                    <p><span className="text-slate-500 font-semibold select-none">Requisitioner:</span> Procurement Officer</p>
                   </div>
                 </div>
 
@@ -2167,8 +2200,8 @@ const Purchases = () => {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-[9.5px] text-black pt-4 border-t border-slate-300">
                   <div className="md:col-span-7 space-y-2">
                     <div>
-                      <p className="text-slate-500 font-semibold uppercase select-none">Amount in Words (Rupee Speller):</p>
-                      <p className="font-extrabold text-black pr-2">{priceToWords(selectedPo.totalAmount)}</p>
+                      <p className="text-slate-500 font-semibold uppercase select-none">Amount in Words ({activeCurrency} Speller):</p>
+                      <p className="font-extrabold text-black pr-2">{priceToWords(selectedPo.totalAmount, activeCurrency)}</p>
                     </div>
                     {activeCompany.bankName && (
                       <div className="pt-2 border-t border-slate-200/60 mt-2 space-y-0.5">
@@ -2193,6 +2226,18 @@ const Purchases = () => {
 
               {/* Footer Buttons */}
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  disabled={downloadingPoId === selectedPo._id}
+                  onClick={() => downloadPO(selectedPo._id, selectedPo.poNumber)}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {downloadingPoId === selectedPo._id ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Download size={13} />
+                  )}
+                  Download PDF
+                </button>
                 <button
                   onClick={() => {
                     setShowPoPreviewModal(false);
@@ -2396,7 +2441,7 @@ const Purchases = () => {
                     </h4>
                     {selectedEntry.invoiceUrl && (
                       <a
-                        href={`http://localhost:5000${selectedEntry.invoiceUrl}`}
+                        href={selectedEntry.invoiceUrl.startsWith('data:') || selectedEntry.invoiceUrl.startsWith('http') ? selectedEntry.invoiceUrl : `http://localhost:5000${selectedEntry.invoiceUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[10px] font-extrabold text-blue-600 hover:text-blue-500 hover:underline cursor-pointer"
@@ -2408,15 +2453,15 @@ const Purchases = () => {
 
                   <div className="flex-1 min-h-[400px] bg-white rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center relative shadow-sm">
                     {selectedEntry.invoiceUrl ? (
-                      selectedEntry.invoiceUrl.toLowerCase().endsWith('.pdf') ? (
+                      selectedEntry.invoiceUrl.toLowerCase().startsWith('data:application/pdf') || selectedEntry.invoiceUrl.toLowerCase().endsWith('.pdf') ? (
                         <iframe
-                          src={`http://localhost:5000${selectedEntry.invoiceUrl}`}
+                          src={selectedEntry.invoiceUrl.startsWith('data:') || selectedEntry.invoiceUrl.startsWith('http') ? selectedEntry.invoiceUrl : `http://localhost:5000${selectedEntry.invoiceUrl}`}
                           className="w-full h-full border-0"
                           title="Supplier Invoice Preview"
                         />
                       ) : (
                         <img
-                          src={`http://localhost:5000${selectedEntry.invoiceUrl}`}
+                          src={selectedEntry.invoiceUrl.startsWith('data:') || selectedEntry.invoiceUrl.startsWith('http') ? selectedEntry.invoiceUrl : `http://localhost:5000${selectedEntry.invoiceUrl}`}
                           alt="Supplier Invoice Preview"
                           className="max-w-full max-h-full object-contain p-2"
                         />
@@ -2432,6 +2477,18 @@ const Purchases = () => {
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  disabled={downloadingPvId === selectedEntry._id}
+                  onClick={() => downloadVoucherPDF(selectedEntry._id, selectedEntry.purchaseVoucherNumber)}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {downloadingPvId === selectedEntry._id ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Download size={13} />
+                  )}
+                  Download PDF
+                </button>
                 <button
                   onClick={() => {
                     setShowEntryPreviewModal(false);

@@ -12,17 +12,34 @@ import {
   X,
   Download,
   FileSpreadsheet,
-  Edit
+  Edit,
+  Loader2
 } from 'lucide-react';
 
-/** Indian Currency Number-to-Words */
-function priceToWords(price) {
+/** Indian/Western Currency Number-to-Words */
+function priceToWords(price, currency = 'INR') {
+  const isUSD = currency === 'USD';
+  const unitName = isUSD ? 'Dollars' : 'Rupees';
+
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
     'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
-  if (num === 0) return 'Zero Rupees only';
+  if (num === 0) return `Zero ${unitName} only`;
+
+  if (isUSD) {
+    function toWordsUSD(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
+      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
+      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
+      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
+      return 'Overflow';
+    }
+    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
+  }
+
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';
@@ -31,7 +48,7 @@ function priceToWords(price) {
   str += (Number(n[2]) !== 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
   str += (Number(n[3]) !== 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
   str += (Number(n[4]) !== 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
-  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + 'Rupees ' : 'Rupees ';
+  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + unitName + ' ' : unitName + ' ';
   return str.trim() + ' only';
 }
 
@@ -47,10 +64,15 @@ const Expenses = () => {
   const [filterMonth, setFilterMonth] = useState('All');
   const [filterYear, setFilterYear] = useState('All');
 
-  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+  const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
+  const activeCurrency = activeCompany?.currency || 'INR';
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
 
   const filteredExpenses = expenses.filter(exp => {
+    const matchCompany = !activeCompanyId || (exp.companyId?._id || exp.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const expDate = new Date(exp.date);
     const matchMonth = filterMonth === 'All' || (expDate.getMonth() + 1) === parseInt(filterMonth);
     const matchYear = filterYear === 'All' || expDate.getFullYear() === parseInt(filterYear);
@@ -96,6 +118,29 @@ const Expenses = () => {
   // Expense Voucher Modal State
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [downloadingExpId, setDownloadingExpId] = useState(null);
+
+  const downloadExpenseVoucher = async (expenseId, refNumber) => {
+    try {
+      setDownloadingExpId(expenseId);
+      const res = await API.get(`/expenses/${expenseId}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${refNumber || 'Expense_Voucher'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Expense voucher download failed:', err);
+      alert('Failed to download Expense Voucher PDF.');
+    } finally {
+      setDownloadingExpId(null);
+    }
+  };
 
   const handleViewDocument = (url, name) => {
     setDocUrl(url);
@@ -145,7 +190,8 @@ const Expenses = () => {
         setExpenseForm(prev => ({ ...prev, category: catRes.data[0]._id }));
       }
       if (settingsRes.data.length > 0) {
-        setExpenseForm(prev => ({ ...prev, companyId: settingsRes.data[0]._id }));
+        const activeId = localStorage.getItem('selectedCompanyId') || settingsRes.data[0]._id;
+        setExpenseForm(prev => ({ ...prev, companyId: activeId }));
       }
     } catch (err) {
       console.error('Error fetching expenses:', err);
@@ -195,7 +241,7 @@ const Expenses = () => {
       paidTo: '',
       notes: '',
       paymentStatus: 'Pending',
-      companyId: companyProfiles[0]?._id || '',
+      companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
     });
     setReceiptFile(null);
   };
@@ -348,7 +394,13 @@ const Expenses = () => {
 
         {activeTab === 'entries' && (
           <button
-            onClick={() => setShowAddExpense(true)}
+            onClick={() => {
+              setExpenseForm(prev => ({
+                ...prev,
+                companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || ''
+              }));
+              setShowAddExpense(true);
+            }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-semibold text-xs transition-all cursor-pointer shadow-lg shadow-blue-500/10"
           >
             <Plus size={16} />
@@ -477,6 +529,18 @@ const Expenses = () => {
                             >
                               <Eye size={13} className="text-slate-450" />
                               View
+                            </button>
+                            <button
+                              disabled={downloadingExpId === exp._id}
+                              onClick={() => downloadExpenseVoucher(exp._id, `EXP-${exp._id.slice(-6).toUpperCase()}`)}
+                              className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
+                            >
+                              {downloadingExpId === exp._id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Download size={12} />
+                              )}
+                              Voucher PDF
                             </button>
                             {exp.receiptUrl ? (
                               <button
@@ -735,20 +799,7 @@ const Expenses = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Profile</label>
-                <select
-                  name="companyId"
-                  required
-                  value={expenseForm.companyId}
-                  onChange={handleExpenseChange}
-                  className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
-                >
-                  {companyProfiles.map((profile) => (
-                    <option key={profile._id} value={profile._id}>{profile.companyName}</option>
-                  ))}
-                </select>
-              </div>
+
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -802,7 +853,7 @@ const Expenses = () => {
 
       {/* ================= DOCUMENT VIEWER MODAL ================= */}
       {showDocViewer && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in animate-duration-200">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in animate-duration-200">
           <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-6 h-[85vh] flex flex-col shadow-2xl relative">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
               <div>
@@ -813,9 +864,10 @@ const Expenses = () => {
               </div>
               <div className="flex items-center gap-3">
                 <a
-                  href={`http://localhost:5000${docUrl}`}
+                  href={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  download="receipt"
                   className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all shadow-sm"
                 >
                   Download Receipt
@@ -830,15 +882,15 @@ const Expenses = () => {
             </div>
 
             <div className="flex-1 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center relative">
-              {docUrl.toLowerCase().endsWith('.pdf') ? (
+              {docUrl.toLowerCase().startsWith('data:application/pdf') || docUrl.toLowerCase().endsWith('.pdf') ? (
                 <iframe
-                  src={`http://localhost:5000${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   className="w-full h-full border-0"
                   title="Document Preview"
                 />
               ) : (
                 <img
-                  src={`http://localhost:5000${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl}`}
                   alt="Document Preview"
                   className="max-w-full max-h-full object-contain"
                 />
@@ -855,7 +907,7 @@ const Expenses = () => {
           : (companyProfiles.find(p => p._id === selectedExpense.companyId) || companyProfiles[0] || {});
 
         return (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
             <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
 
               {/* Close Button */}
@@ -889,23 +941,55 @@ const Expenses = () => {
                   {/* Corporate Branding Vector / Uploaded Logo */}
                   <div className="flex items-center gap-3">
                     {activeCompany.logoSquareUrl ? (
-                      <div className="w-10 h-10 bg-white rounded-md flex items-center justify-center overflow-hidden border border-slate-200 p-0.5">
-                        <img src={`http://localhost:5000${activeCompany.logoSquareUrl}`} alt="Logo Icon" className="max-w-full max-h-full object-contain" />
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={activeCompany.logoSquareUrl.startsWith('data:') || activeCompany.logoSquareUrl.startsWith('http') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`} 
+                          alt="Company Logo" 
+                          className="w-20 h-20 object-contain" 
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {activeCompany.logoUrl ? (
+                          <img 
+                            src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                            alt="Brand Logo" 
+                            className="h-20 object-contain" 
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div>
+                            <h2 className="text-base font-black text-[#002e6e] uppercase tracking-tight">
+                              {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
+                            </h2>
+                            <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.05em] uppercase leading-relaxed max-w-[400px]">
+                              {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}
+                              {activeCompany.address || 'Internal Audit Ledger'}
+                            </p>
+                          </div>
+                        )}
                       </div>
+                    ) : activeCompany.logoUrl ? (
+                      <img 
+                        src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                        alt="Brand Logo" 
+                        className="h-20 object-contain" 
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
                     ) : (
-                      <div className="relative w-8 h-8 bg-[#002e6e] flex items-center justify-center font-black text-white text-xs select-none">
-                        {(activeCompany.companyName || 'M')[0]}
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-8 h-8 bg-[#002e6e] flex items-center justify-center font-black text-white text-xs select-none">
+                          {(activeCompany.companyName || 'M')[0]}
+                        </div>
+                        <div>
+                          <h2 className="text-sm font-black text-[#002e6e] uppercase tracking-tight">
+                            {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
+                          </h2>
+                          <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.05em] uppercase leading-relaxed max-w-[400px]">
+                            {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}
+                            {activeCompany.address || 'Internal Audit Ledger'}
+                          </p>
+                        </div>
                       </div>
                     )}
-                    <div>
-                      <h2 className="text-sm font-black text-[#002e6e] uppercase tracking-tight">
-                        {activeCompany.companyName || 'CORPORATE PROCUREMENT'}
-                      </h2>
-                      <p className="text-[7.5px] font-bold text-slate-500 tracking-[0.05em] uppercase leading-relaxed max-w-[400px]">
-                        {activeCompany.gstNumber ? `GSTIN: ${activeCompany.gstNumber} | ` : ''}
-                        {activeCompany.address || 'Internal Audit Ledger'}
-                      </p>
-                    </div>
                   </div>
 
                   {/* Voucher ID and Date Box */}
@@ -964,8 +1048,8 @@ const Expenses = () => {
                 {/* Amount in words & Signature card */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-[9.5px] text-black pt-4 border-t border-slate-300">
                   <div className="md:col-span-7 space-y-1">
-                    <p className="text-slate-500 font-semibold uppercase select-none">Total Amount (in Rupee spelling conversion):</p>
-                    <p className="font-extrabold text-black pr-2">{priceToWords(selectedExpense.amount)}</p>
+                    <p className="text-slate-500 font-semibold uppercase select-none">Total Amount (in {activeCurrency} spelling conversion):</p>
+                    <p className="font-extrabold text-black pr-2">{priceToWords(selectedExpense.amount, activeCurrency)}</p>
                   </div>
 
                   <div className="md:col-span-5 flex flex-col justify-end space-y-0.5 pl-4 border-l border-slate-200">
@@ -984,15 +1068,15 @@ const Expenses = () => {
                     <FileText className="text-blue-600" size={16} /> Supporting Receipt Attachment
                   </h4>
                   <div className="bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 h-96 flex items-center justify-center relative">
-                    {selectedExpense.receiptUrl.toLowerCase().endsWith('.pdf') ? (
+                    {selectedExpense.receiptUrl.toLowerCase().startsWith('data:application/pdf') || selectedExpense.receiptUrl.toLowerCase().endsWith('.pdf') ? (
                       <iframe
-                        src={`http://localhost:5000${selectedExpense.receiptUrl}`}
+                        src={selectedExpense.receiptUrl.startsWith('data:') || selectedExpense.receiptUrl.startsWith('http') ? selectedExpense.receiptUrl : `http://localhost:5000${selectedExpense.receiptUrl}`}
                         className="w-full h-full border-0"
                         title="Receipt Preview"
                       />
                     ) : (
                       <img
-                        src={`http://localhost:5000${selectedExpense.receiptUrl}`}
+                        src={selectedExpense.receiptUrl.startsWith('data:') || selectedExpense.receiptUrl.startsWith('http') ? selectedExpense.receiptUrl : `http://localhost:5000${selectedExpense.receiptUrl}`}
                         alt="Receipt Preview"
                         className="max-w-full max-h-full object-contain p-2"
                       />
@@ -1007,6 +1091,18 @@ const Expenses = () => {
 
               {/* Footer Buttons */}
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  disabled={downloadingExpId === selectedExpense._id}
+                  onClick={() => downloadExpenseVoucher(selectedExpense._id, `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`)}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {downloadingExpId === selectedExpense._id ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Download size={13} />
+                  )}
+                  Download PDF
+                </button>
                 <button
                   onClick={() => {
                     setShowVoucherModal(false);

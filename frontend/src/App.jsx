@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -13,6 +13,8 @@ import Sales from './pages/Sales';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
+import Company from './pages/Company';
+import { applyTheme } from './utils/theme.js';
 
 // Layout wrapper
 const Layout = () => {
@@ -30,6 +32,12 @@ const Layout = () => {
 };
 
 function App() {
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme-mode') || 'light';
+    const savedAccent = localStorage.getItem('theme-accent') || 'blue';
+    applyTheme(savedTheme, savedAccent);
+  }, []);
+
   return (
     <Router>
       <Routes>
@@ -46,6 +54,7 @@ function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/company" element={<Company />} />
           </Route>
         </Route>
 

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { capturePreviewAsPDF } from '../utils/capturePreviewAsPDF';
 import API from '../services/api';
 import {
   Search, 
@@ -24,17 +25,34 @@ import {
   Sparkles,
   TrendingDown,
   FileText,
-  Activity
+  Activity,
+  Download
 } from 'lucide-react';
 
-/** Indian Currency Number-to-Words */
-function priceToWords(price) {
+/** Indian/Western Currency Number-to-Words */
+function priceToWords(price, currency = 'INR') {
+  const isUSD = currency === 'USD';
+  const unitName = isUSD ? 'Dollars' : 'Rupees';
+
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
     'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
-  if (num === 0) return 'Zero Rupees only';
+  if (num === 0) return `Zero ${unitName} only`;
+
+  if (isUSD) {
+    function toWordsUSD(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
+      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
+      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
+      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
+      return 'Overflow';
+    }
+    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
+  }
+
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';
@@ -43,7 +61,7 @@ function priceToWords(price) {
   str += (Number(n[2]) !== 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
   str += (Number(n[3]) !== 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
   str += (Number(n[4]) !== 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
-  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + 'Rupees ' : 'Rupees ';
+  str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + unitName + ' ' : unitName + ' ';
   return str.trim() + ' only';
 }
 
@@ -81,8 +99,21 @@ const Reports = () => {
   const [downloadingId, setDownloadingId] = useState(null);
   const [downloadType, setDownloadType] = useState(null); // 'docx' or 'pdf'
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [downloadingExpId, setDownloadingExpId] = useState(null);
+  const [downloadingPvId, setDownloadingPvId] = useState(null);
 
-  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  // Refs for PDF capture of each preview paper sheet
+  const invoicePreviewRef = useRef(null);
+  const expensePreviewRef = useRef(null);
+  const purchasePreviewRef = useRef(null);
+  // Capturing states
+  const [capturingInvPDF, setCapturingInvPDF] = useState(false);
+  const [capturingExpPDF, setCapturingExpPDF] = useState(false);
+  const [capturingPvPDF, setCapturingPvPDF] = useState(false);
+
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+  const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
+  const activeCurrency = activeCompany?.currency || 'INR';
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
 
   const fetchData = async () => {
@@ -102,7 +133,7 @@ const Reports = () => {
       setInvoices(invRes.data);
       setCompanyProfiles(settingsRes.data);
       if (settingsRes.data?.length > 0) {
-        setSelectedCompanyId(settingsRes.data[0]._id);
+        setSelectedCompanyId(localStorage.getItem('selectedCompanyId') || settingsRes.data[0]._id);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch registry data for reports');
@@ -135,6 +166,9 @@ const Reports = () => {
 
   // 1. FILTERED EXPENSES
   const filteredExpenses = expenses.filter(exp => {
+    const matchCompany = !activeCompanyId || (exp.companyId?._id || exp.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const matchSearch = 
       exp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (exp.category?.name && exp.category.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -151,6 +185,9 @@ const Reports = () => {
 
   // 2. FILTERED PURCHASES
   const filteredPurchases = purchaseEntries.filter(entry => {
+    const matchCompany = !activeCompanyId || (entry.companyId?._id || entry.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const matchSearch = 
       (entry.invoiceNumber && entry.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (entry.supplierName && entry.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -167,6 +204,9 @@ const Reports = () => {
 
   // 3. FILTERED INVOICES (SALES REVENUE)
   const filteredInvoices = invoices.filter(inv => {
+    const matchCompany = !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId;
+    if (!matchCompany) return false;
+
     const matchSearch = 
       (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -202,6 +242,50 @@ const Reports = () => {
     } finally {
       setDownloadingId(null);
       setDownloadType(null);
+    }
+  };
+
+  const downloadExpenseVoucher = async (expenseId, refNumber) => {
+    try {
+      setDownloadingExpId(expenseId);
+      const res = await API.get(`/expenses/${expenseId}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${refNumber || 'Expense_Voucher'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Expense voucher download failed:', err);
+      alert('Failed to download Expense Voucher PDF.');
+    } finally {
+      setDownloadingExpId(null);
+    }
+  };
+
+  const downloadVoucherPDF = async (entryId, voucherNumber) => {
+    try {
+      setDownloadingPvId(entryId);
+      const res = await API.get(`/purchase-entries/${entryId}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${voucherNumber || 'purchase-voucher'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Voucher PDF download failed:', err);
+      alert('Failed to download Purchase Voucher PDF.');
+    } finally {
+      setDownloadingPvId(null);
     }
   };
 
@@ -486,6 +570,18 @@ const Reports = () => {
                                   <Eye size={13} className="text-slate-500" />
                                   View Voucher
                                 </button>
+                                <button
+                                  disabled={downloadingExpId === exp._id}
+                                  onClick={() => downloadExpenseVoucher(exp._id, `EXP-${exp._id.slice(-6).toUpperCase()}`)}
+                                  className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
+                                >
+                                  {downloadingExpId === exp._id ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : (
+                                    <Download size={12} />
+                                  )}
+                                  PDF
+                                </button>
                                 {exp.receiptUrl ? (
                                   <button
                                     onClick={() => handleViewDocument(exp.receiptUrl, exp.title)}
@@ -591,6 +687,18 @@ const Reports = () => {
                                 >
                                   <Eye size={13} className="text-slate-500" />
                                   View specifications
+                                </button>
+                                <button
+                                  disabled={downloadingPvId === entry._id}
+                                  onClick={() => downloadVoucherPDF(entry._id, entry.purchaseVoucherNumber)}
+                                  className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
+                                >
+                                  {downloadingPvId === entry._id ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : (
+                                    <Download size={12} />
+                                  )}
+                                  PDF
                                 </button>
                                 {entry.invoiceUrl ? (
                                   <button
@@ -768,6 +876,8 @@ const Reports = () => {
         const sgstVal        = taxAmountVal / 2;
         const baseAmountVal  = totalAmountVal - taxAmountVal;
         const totalQuantity  = (selectedInvoice.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+        const amountPaidVal  = Number(selectedInvoice.amountPaid || 0);
+        const amountDueVal   = Number(selectedInvoice.amountDue !== undefined ? selectedInvoice.amountDue : (totalAmountVal - amountPaidVal));
 
         return (
           <div className="fixed inset-0 bg-slate-955/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
@@ -797,23 +907,23 @@ const Reports = () => {
               </div>
 
               {/* PAPER SHEET */}
-              <div className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
+              <div ref={invoicePreviewRef} className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
                 
                 <div className="flex flex-row justify-between items-start gap-4 pb-4">
                   <div>
                     {activeBiller.logoSquareUrl ? (
                       <div className="flex items-center gap-3">
                         <img 
-                          src={activeBiller.logoSquareUrl.startsWith('http') ? activeBiller.logoSquareUrl : `http://localhost:5000${activeBiller.logoSquareUrl}`} 
+                          src={activeBiller.logoSquareUrl.startsWith('http') || activeBiller.logoSquareUrl.startsWith('data:') ? activeBiller.logoSquareUrl : `http://localhost:5000${activeBiller.logoSquareUrl}`} 
                           alt="Company Logo" 
-                          className="w-10 h-10 object-contain"
+                          className="w-20 h-20 object-contain"
                           onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         {activeBiller.logoUrl ? (
                           <img 
-                            src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
+                            src={activeBiller.logoUrl.startsWith('http') || activeBiller.logoUrl.startsWith('data:') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                             alt="Brand Logo" 
-                            className="h-10 object-contain"
+                            className="h-20 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
@@ -822,9 +932,9 @@ const Reports = () => {
                       </div>
                     ) : activeBiller.logoUrl ? (
                       <img 
-                        src={activeBiller.logoUrl.startsWith('http') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
+                        src={activeBiller.logoUrl.startsWith('http') || activeBiller.logoUrl.startsWith('data:') ? activeBiller.logoUrl : `http://localhost:5000${activeBiller.logoUrl}`} 
                         alt="Brand Logo" 
-                        className="h-10 object-contain"
+                        className="h-20 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
@@ -844,9 +954,10 @@ const Reports = () => {
                     )}
                   </div>
 
-                  <div className="border border-black px-3.5 py-2 w-44 text-[10px] font-bold text-black flex flex-col justify-center divide-y divide-black gap-1.5 bg-white select-none">
-                    <div className="pb-1">Date : {new Date(selectedInvoice.invoiceDate || selectedInvoice.createdAt).toLocaleDateString('en-GB')}</div>
-                    <div className="pt-1">Invoice No : {selectedInvoice.invoiceNumber || 'N/A'}</div>
+                  {/* Date & Invoice Info (No Box) */}
+                  <div className="text-[10px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
+                    <div>Date : {new Date(selectedInvoice.invoiceDate || selectedInvoice.createdAt).toLocaleDateString('en-GB')}</div>
+                    <div>Invoice No : {selectedInvoice.invoiceNumber || 'N/A'}</div>
                   </div>
                 </div>
 
@@ -926,6 +1037,24 @@ const Reports = () => {
                         <td className="border-r border-black p-2 text-center">{totalQuantity} Months</td>
                         <td className="p-2 text-right">{totalAmountVal.toLocaleString()}/-</td>
                       </tr>
+                      {amountPaidVal > 0 && (
+                        <>
+                          <tr className="font-bold border-t border-black h-7 text-black">
+                            <td className="border-r border-black p-2 text-left text-emerald-700">Amount Paid:</td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="p-2 text-right text-emerald-700">-{amountPaidVal.toLocaleString()}/-</td>
+                          </tr>
+                          <tr className="bg-[#e8e5d3] font-bold border-t border-black h-7 text-black">
+                            <td className="border-r border-black p-2 text-left text-red-650">Amount Due:</td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="border-r border-black p-2"></td>
+                            <td className="p-2 text-right text-red-650">{amountDueVal.toLocaleString()}/-</td>
+                          </tr>
+                        </>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -962,11 +1091,7 @@ const Reports = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-[10px] text-black pt-4 border-t border-slate-200">
-                  <div className="md:col-span-6 space-y-1">
-                    <p className="text-slate-500 font-medium select-none">Total Amount (in words):</p>
-                    <p className="font-bold text-black pr-4">{priceToWords(totalAmountVal)}</p>
-                  </div>
-                  
+                  {/* Banking Details (Left - 6 cols) */}
                   <div className="md:col-span-6 space-y-1">
                     <h5 className="font-bold text-black uppercase tracking-wide select-none">Company's Bank Details</h5>
                     <div className="pl-2 space-y-0.5 text-slate-800">
@@ -975,6 +1100,12 @@ const Reports = () => {
                       <p><span className="text-slate-500 select-none">Account No :</span> <span className="font-bold text-black tracking-wider">{activeBiller.bankAccountNumber || activeBiller.accountNumber || 'N/A'}</span></p>
                       <p><span className="text-slate-500 select-none">Branch & IFS Code :</span> <span className="font-bold text-black">{activeBiller.ifscCode || 'N/A'}</span></p>
                     </div>
+                  </div>
+
+                  {/* Amount in words (Right - 6 cols) */}
+                  <div className="md:col-span-6 space-y-1 md:pl-6 md:border-l md:border-slate-200">
+                    <p className="text-slate-500 font-medium select-none">Total Amount (in words):</p>
+                    <p className="font-bold text-black pr-4">{priceToWords(totalAmountVal)}</p>
                   </div>
                 </div>
 
@@ -990,6 +1121,27 @@ const Reports = () => {
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200 bg-slate-50 rounded-b-3xl">
+                <button
+                  onClick={() => capturePreviewAsPDF(
+                    invoicePreviewRef.current,
+                    selectedInvoice.invoiceNumber || 'invoice',
+                    () => setCapturingInvPDF(true),
+                    () => setCapturingInvPDF(false)
+                  )}
+                  disabled={capturingInvPDF}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                >
+                  <Download size={14} />
+                  {capturingInvPDF ? 'Capturing...' : 'Download PDF'}
+                </button>
+                <button
+                  onClick={() => downloadInvoice(selectedInvoice._id, selectedInvoice.invoiceNumber, 'docx')}
+                  disabled={downloadingId === selectedInvoice._id}
+                  className="px-5 py-2.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                >
+                  <Download size={14} />
+                  {downloadingId === selectedInvoice._id && downloadType === 'docx' ? 'Downloading...' : 'Download Word'}
+                </button>
                 <button
                   onClick={() => {
                     setShowInvoicePreviewModal(false);
@@ -1013,7 +1165,7 @@ const Reports = () => {
           : (companyProfiles.find(p => p._id === selectedExpense.companyId) || companyProfiles[0] || {});
 
         return (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
             <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
 
               <button
@@ -1031,21 +1183,41 @@ const Reports = () => {
                   <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse"></span>
                   <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest font-mono">OFFICIAL EXPENSE PAYMENT VOUCHER PREVIEW</span>
                 </div>
-                <h3 className="text-lg font-black text-slate-850 flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-850 flex items-center gap-2">
                   <DollarSign size={20} className="text-blue-500" />
                   Expense Voucher Preview
                 </h3>
               </div>
 
               {/* PAPER SHEET */}
-              <div className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
+              <div ref={expensePreviewRef} className="bg-white text-black border border-slate-350 p-6 sm:p-10 shadow-2xl rounded-sm space-y-5 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
+
                 <div className="flex flex-row justify-between items-start gap-4 pb-4">
                   <div>
-                    {activeCompany.logoUrl ? (
+                    {activeCompany.logoSquareUrl ? (
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={activeCompany.logoSquareUrl.startsWith('http') || activeCompany.logoSquareUrl.startsWith('data:') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`} 
+                          alt="Company Logo" 
+                          className="w-20 h-20 object-contain"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {activeCompany.logoUrl ? (
+                          <img 
+                            src={activeCompany.logoUrl.startsWith('http') || activeCompany.logoUrl.startsWith('data:') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                            alt="Brand Logo" 
+                            className="h-20 object-contain"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <h2 className="text-sm font-bold text-[#002e6e]">{activeCompany.companyName}</h2>
+                        )}
+                      </div>
+                    ) : activeCompany.logoUrl ? (
                       <img 
-                        src={activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                        src={activeCompany.logoUrl.startsWith('http') || activeCompany.logoUrl.startsWith('data:') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
                         alt="Brand Logo" 
-                        className="h-10 object-contain"
+                        className="h-20 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
@@ -1104,8 +1276,8 @@ const Reports = () => {
                 </table>
 
                 <div className="space-y-1 text-[10px] pt-4">
-                  <p className="text-slate-500 font-medium select-none">Amount in words:</p>
-                  <p className="font-bold text-black">{priceToWords(selectedExpense.amount)}</p>
+                  <p className="text-slate-500 font-medium select-none">Amount in words ({activeCompany.currency || activeCurrency} Speller):</p>
+                  <p className="font-bold text-black">{priceToWords(selectedExpense.amount, activeCompany.currency || activeCurrency)}</p>
                 </div>
 
                 <div className="pt-8 flex justify-between text-[10px] font-bold select-none text-black">
@@ -1121,6 +1293,23 @@ const Reports = () => {
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  disabled={capturingExpPDF}
+                  onClick={() => capturePreviewAsPDF(
+                    expensePreviewRef.current,
+                    `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`,
+                    () => setCapturingExpPDF(true),
+                    () => setCapturingExpPDF(false)
+                  )}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {capturingExpPDF ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Download size={13} />
+                  )}
+                  {capturingExpPDF ? 'Capturing...' : 'Download PDF'}
+                </button>
                 <button
                   onClick={() => {
                     setShowExpenseVoucherModal(false);
@@ -1141,7 +1330,7 @@ const Reports = () => {
       {showPurchasePreviewModal && selectedPurchaseEntry && (() => {
         const activeCompany = companyProfiles[0] || {};
         return (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in">
             <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-2xl relative my-8">
 
               <button
@@ -1166,24 +1355,44 @@ const Reports = () => {
               </div>
 
               {/* PAPER SHEET */}
-              <div className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
+              <div ref={purchasePreviewRef} className="bg-[#FAF9F5] text-black border border-slate-350 p-6 sm:p-12 shadow-2xl rounded-sm space-y-6 select-text max-w-[800px] mx-auto text-left font-sans leading-relaxed">
                 
                 <div className="flex flex-row justify-between items-start gap-4 pb-4">
                   <div>
-                    {activeCompany.logoUrl ? (
+                    {activeCompany.logoSquareUrl ? (
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={activeCompany.logoSquareUrl.startsWith('http') || activeCompany.logoSquareUrl.startsWith('data:') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`} 
+                          alt="Company Logo" 
+                          className="w-20 h-20 object-contain"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {activeCompany.logoUrl ? (
+                          <img 
+                            src={activeCompany.logoUrl.startsWith('http') || activeCompany.logoUrl.startsWith('data:') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                            alt="Brand Logo" 
+                            className="h-20 object-contain"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <h2 className="text-sm font-bold text-[#002e6e]">{activeCompany.companyName}</h2>
+                        )}
+                      </div>
+                    ) : activeCompany.logoUrl ? (
                       <img 
-                        src={activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
+                        src={activeCompany.logoUrl.startsWith('http') || activeCompany.logoUrl.startsWith('data:') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
                         alt="Brand Logo" 
-                        className="h-10 object-contain"
+                        className="h-20 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
                       <h2 className="text-[17px] font-black text-[#002e6e] uppercase tracking-tight">{activeCompany.companyName}</h2>
                     )}
                   </div>
-                  <div className="border border-black px-3.5 py-2 w-44 text-[10px] font-bold text-black flex flex-col justify-center divide-y divide-black gap-1.5 bg-white select-none">
-                    <div className="pb-1">Received Date : {new Date(selectedPurchaseEntry.purchaseDate || selectedPurchaseEntry.createdAt).toLocaleDateString('en-GB')}</div>
-                    <div className="pt-1">Supplier Ref: #{selectedPurchaseEntry.invoiceNumber}</div>
+                  {/* Date & Invoice Info (No Box) */}
+                  <div className="text-[10px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
+                    <div>Received Date : {new Date(selectedPurchaseEntry.purchaseDate || selectedPurchaseEntry.createdAt).toLocaleDateString('en-GB')}</div>
+                    <div>Supplier Ref: #{selectedPurchaseEntry.invoiceNumber}</div>
                   </div>
                 </div>
 
@@ -1240,6 +1449,25 @@ const Reports = () => {
                   </tbody>
                 </table>
 
+                {/* Amount in Words — left side, above payment summary */}
+                <div className="pt-3 border-t border-slate-200 text-[10px] text-black">
+                  <p className="text-slate-500 font-medium select-none">Grand Total (in words):</p>
+                  <p className="font-bold text-black mt-0.5">
+                    {priceToWords(selectedPurchaseEntry.grandTotal || selectedPurchaseEntry.totalAmount || 0, activeCompany.currency)}
+                  </p>
+                </div>
+
+                {/* Payment Bank Details — left, below Amount in Words */}
+                <div className="text-[10px] text-black space-y-0.5 pt-1">
+                  <p className="font-bold text-black uppercase tracking-wide select-none">Payment Bank Details</p>
+                  <div className="pl-2 space-y-0.5 text-slate-800">
+                    <p><span className="text-slate-500 select-none">A/c Holder's Name :</span> <span className="font-bold text-black">{activeCompany.accountHolderName || 'N/A'}</span></p>
+                    <p><span className="text-slate-500 select-none">Bank Name :</span> <span className="font-semibold text-black">{activeCompany.bankName || 'N/A'}</span></p>
+                    <p><span className="text-slate-500 select-none">Account No :</span> <span className="font-bold text-black tracking-wider">{activeCompany.bankAccountNumber || activeCompany.accountNumber || 'N/A'}</span></p>
+                    <p><span className="text-slate-500 select-none">Branch &amp; IFS Code :</span> <span className="font-bold text-black">{activeCompany.ifscCode || 'N/A'}</span></p>
+                  </div>
+                </div>
+
                 {/* Payment summary details inside paper */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200 text-[10px] text-black bg-white">
                   <div>
@@ -1254,9 +1482,23 @@ const Reports = () => {
                   </div>
                 </div>
 
+
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  onClick={() => capturePreviewAsPDF(
+                    purchasePreviewRef.current,
+                    selectedPurchaseEntry.purchaseVoucherNumber || 'purchase-voucher',
+                    () => setCapturingPvPDF(true),
+                    () => setCapturingPvPDF(false)
+                  )}
+                  disabled={capturingPvPDF}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                >
+                  <Download size={14} />
+                  {capturingPvPDF ? 'Capturing...' : 'Download Voucher PDF'}
+                </button>
                 <button
                   onClick={() => {
                     setShowPurchasePreviewModal(false);
@@ -1275,7 +1517,7 @@ const Reports = () => {
 
       {/* ================= DOCUMENT VIEWER MODAL ================= */}
       {showDocViewer && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in animate-duration-200">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in animate-duration-200">
           <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-6 h-[85vh] flex flex-col shadow-2xl relative">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
               <div>
@@ -1286,9 +1528,10 @@ const Reports = () => {
               </div>
               <div className="flex items-center gap-3">
                 <a
-                  href={`http://localhost:5000/${docUrl}`}
+                  href={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl.startsWith('/') ? '' : '/'}${docUrl}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  download="attachment"
                   className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all shadow-sm"
                 >
                   Open in New Tab
@@ -1303,15 +1546,15 @@ const Reports = () => {
             </div>
 
             <div className="flex-1 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center relative">
-              {docUrl.toLowerCase().endsWith('.pdf') ? (
+              {docUrl.toLowerCase().startsWith('data:application/pdf') || docUrl.toLowerCase().endsWith('.pdf') ? (
                 <iframe
-                  src={`http://localhost:5000/${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl.startsWith('/') ? '' : '/'}${docUrl}`}
                   className="w-full h-full border-0"
                   title="Supporting Document Preview"
                 />
               ) : (
                 <img
-                  src={`http://localhost:5000/${docUrl}`}
+                  src={docUrl.startsWith('data:') || docUrl.startsWith('http') ? docUrl : `http://localhost:5000${docUrl.startsWith('/') ? '' : '/'}${docUrl}`}
                   alt="Supporting Document Preview"
                   className="max-w-full max-h-full object-contain"
                 />

@@ -87,17 +87,31 @@ const Dashboard = () => {
     return true; // 'All Time'
   };
 
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+
+  const filteredRawInvoices = React.useMemo(() => {
+    return rawInvoices.filter(inv => !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId);
+  }, [rawInvoices, activeCompanyId]);
+
+  const filteredRawExpenses = React.useMemo(() => {
+    return rawExpenses.filter(exp => !activeCompanyId || (exp.companyId?._id || exp.companyId) === activeCompanyId);
+  }, [rawExpenses, activeCompanyId]);
+
+  const filteredRawPurchases = React.useMemo(() => {
+    return rawPurchases.filter(pr => !activeCompanyId || (pr.companyId?._id || pr.companyId) === activeCompanyId);
+  }, [rawPurchases, activeCompanyId]);
+
   const filteredInvoices = React.useMemo(() => {
-    return rawInvoices.filter(inv => checkDateInPeriod(inv.invoiceDate || inv.createdAt, timePeriod));
-  }, [rawInvoices, timePeriod]);
+    return filteredRawInvoices.filter(inv => checkDateInPeriod(inv.invoiceDate || inv.createdAt, timePeriod));
+  }, [filteredRawInvoices, timePeriod]);
 
   const filteredExpenses = React.useMemo(() => {
-    return rawExpenses.filter(exp => checkDateInPeriod(exp.date || exp.createdAt, timePeriod));
-  }, [rawExpenses, timePeriod]);
+    return filteredRawExpenses.filter(exp => checkDateInPeriod(exp.date || exp.createdAt, timePeriod));
+  }, [filteredRawExpenses, timePeriod]);
 
   const filteredPurchases = React.useMemo(() => {
-    return rawPurchases.filter(pr => checkDateInPeriod(pr.purchaseDate || pr.createdAt, timePeriod));
-  }, [rawPurchases, timePeriod]);
+    return filteredRawPurchases.filter(pr => checkDateInPeriod(pr.purchaseDate || pr.createdAt, timePeriod));
+  }, [filteredRawPurchases, timePeriod]);
 
   const stats = React.useMemo(() => {
     let totalSales = 0, salesPaid = 0, salesDue = 0;
@@ -163,7 +177,7 @@ const Dashboard = () => {
       });
     }
 
-    rawInvoices.forEach(inv => {
+    filteredRawInvoices.forEach(inv => {
       const dateVal = inv.invoiceDate || inv.createdAt;
       if (!dateVal) return;
       const d = new Date(dateVal);
@@ -175,7 +189,7 @@ const Dashboard = () => {
       }
     });
 
-    rawExpenses.forEach(exp => {
+    filteredRawExpenses.forEach(exp => {
       const dateVal = exp.date || exp.createdAt;
       if (!dateVal) return;
       const d = new Date(dateVal);
@@ -192,11 +206,11 @@ const Dashboard = () => {
       Sales,
       Expenses
     }));
-  }, [rawInvoices, rawExpenses]);
+  }, [filteredRawInvoices, filteredRawExpenses]);
 
   const recentActivity = React.useMemo(() => {
     const combined = [
-      ...rawInvoices.map(inv => ({
+      ...filteredRawInvoices.map(inv => ({
         id: inv._id,
         type: 'Sale',
         title: `Invoice ${inv.invoiceNumber}`,
@@ -206,7 +220,7 @@ const Dashboard = () => {
         status: inv.paymentStatus || 'Unpaid',
         path: '/sales'
       })),
-      ...rawExpenses.map(exp => ({
+      ...filteredRawExpenses.map(exp => ({
         id: exp._id,
         type: 'Expense',
         title: exp.title,
@@ -216,7 +230,7 @@ const Dashboard = () => {
         status: exp.paymentStatus || 'Paid',
         path: '/expenses'
       })),
-      ...rawPurchases.map(pr => ({
+      ...filteredRawPurchases.map(pr => ({
         id: pr._id,
         type: 'Purchase',
         title: pr.purchaseVoucherNumber || `Purchase Entry`,
@@ -230,7 +244,7 @@ const Dashboard = () => {
 
     combined.sort((a, b) => b.date - a.date);
     return combined.slice(0, 5);
-  }, [rawInvoices, rawExpenses, rawPurchases]);
+  }, [filteredRawInvoices, filteredRawExpenses, filteredRawPurchases]);
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 

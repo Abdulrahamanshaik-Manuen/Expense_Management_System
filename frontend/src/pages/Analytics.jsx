@@ -75,8 +75,22 @@ const Analytics = () => {
     fetchAnalyticsData();
   }, []);
 
-  const activeCurrency = companyProfiles[0]?.currency || 'INR';
+  const activeCompanyId = localStorage.getItem('selectedCompanyId');
+  const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
+  const activeCurrency = activeCompany?.currency || 'INR';
   const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+
+  const filteredRawInvoices = React.useMemo(() => {
+    return rawInvoices.filter(inv => !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId);
+  }, [rawInvoices, activeCompanyId]);
+
+  const filteredRawExpenses = React.useMemo(() => {
+    return rawExpenses.filter(exp => !activeCompanyId || (exp.companyId?._id || exp.companyId) === activeCompanyId);
+  }, [rawExpenses, activeCompanyId]);
+
+  const filteredRawPurchases = React.useMemo(() => {
+    return rawPurchases.filter(pr => !activeCompanyId || (pr.companyId?._id || pr.companyId) === activeCompanyId);
+  }, [rawPurchases, activeCompanyId]);
 
   // Helper: check if date is within selected time period
   const checkDateInPeriod = (dateValue, period) => {
@@ -145,7 +159,7 @@ const Analytics = () => {
     let prevOutflow = 0;
 
     // 1. Calculate sales (inflow)
-    rawInvoices.forEach(inv => {
+    filteredRawInvoices.forEach(inv => {
       const date = inv.invoiceDate || inv.createdAt;
       const amount = inv.totalAmount || 0;
       if (checkDateInPeriod(date, timePeriod)) {
@@ -156,7 +170,7 @@ const Analytics = () => {
     });
 
     // 2. Calculate expenses & purchases (outflow)
-    rawExpenses.forEach(exp => {
+    filteredRawExpenses.forEach(exp => {
       const date = exp.date || exp.createdAt;
       const amount = exp.amount || 0;
       if (checkDateInPeriod(date, timePeriod)) {
@@ -166,7 +180,7 @@ const Analytics = () => {
       }
     });
 
-    rawPurchases.forEach(pr => {
+    filteredRawPurchases.forEach(pr => {
       const date = pr.purchaseDate || pr.createdAt;
       const amount = pr.grandTotal || pr.totalAmount || 0;
       if (checkDateInPeriod(date, timePeriod)) {
@@ -203,7 +217,7 @@ const Analytics = () => {
       outflowGrowth,
       netGrowth
     };
-  }, [rawInvoices, rawExpenses, rawPurchases, timePeriod]);
+  }, [filteredRawInvoices, filteredRawExpenses, filteredRawPurchases, timePeriod]);
 
   // Bi-directional cash flow chart data
   const cashFlowTimeline = React.useMemo(() => {
@@ -228,7 +242,7 @@ const Analytics = () => {
         });
       }
 
-      rawInvoices.forEach(inv => {
+      filteredRawInvoices.forEach(inv => {
         const date = new Date(inv.invoiceDate || inv.createdAt);
         const match = dataset.find(pt => 
           pt.dateObj.getDate() === date.getDate() && 
@@ -240,7 +254,7 @@ const Analytics = () => {
         }
       });
 
-      rawExpenses.forEach(exp => {
+      filteredRawExpenses.forEach(exp => {
         const date = new Date(exp.date || exp.createdAt);
         const match = dataset.find(pt => 
           pt.dateObj.getDate() === date.getDate() && 
@@ -252,7 +266,7 @@ const Analytics = () => {
         }
       });
 
-      rawPurchases.forEach(pr => {
+      filteredRawPurchases.forEach(pr => {
         const date = new Date(pr.purchaseDate || pr.createdAt);
         const match = dataset.find(pt => 
           pt.dateObj.getDate() === date.getDate() && 
@@ -277,9 +291,9 @@ const Analytics = () => {
     let oldestDate = new Date(now.getFullYear(), now.getMonth() - 11, 1); // default to last 12 months
     
     const allDates = [
-      ...rawInvoices.map(inv => new Date(inv.invoiceDate || inv.createdAt)),
-      ...rawExpenses.map(exp => new Date(exp.date || exp.createdAt)),
-      ...rawPurchases.map(pr => new Date(pr.purchaseDate || pr.createdAt))
+      ...filteredRawInvoices.map(inv => new Date(inv.invoiceDate || inv.createdAt)),
+      ...filteredRawExpenses.map(exp => new Date(exp.date || exp.createdAt)),
+      ...filteredRawPurchases.map(pr => new Date(pr.purchaseDate || pr.createdAt))
     ].filter(d => !isNaN(d.getTime()));
 
     if (allDates.length > 0) {
@@ -306,19 +320,19 @@ const Analytics = () => {
       timelineCount++;
     }
 
-    rawInvoices.forEach(inv => {
+    filteredRawInvoices.forEach(inv => {
       const d = new Date(inv.invoiceDate || inv.createdAt);
       const match = dataset.find(pt => pt.monthIndex === d.getMonth() && pt.year === d.getFullYear());
       if (match) match.Inflow += inv.totalAmount || 0;
     });
 
-    rawExpenses.forEach(exp => {
+    filteredRawExpenses.forEach(exp => {
       const d = new Date(exp.date || exp.createdAt);
       const match = dataset.find(pt => pt.monthIndex === d.getMonth() && pt.year === d.getFullYear());
       if (match) match.Outflow -= exp.amount || 0;
     });
 
-    rawPurchases.forEach(pr => {
+    filteredRawPurchases.forEach(pr => {
       const d = new Date(pr.purchaseDate || pr.createdAt);
       const match = dataset.find(pt => pt.monthIndex === d.getMonth() && pt.year === d.getFullYear());
       if (match) match.Outflow -= pr.grandTotal || pr.totalAmount || 0;
@@ -330,7 +344,7 @@ const Analytics = () => {
       Outflow: item.Outflow,
       'Net Cash Flow': item.Inflow + item.Outflow
     }));
-  }, [rawInvoices, rawExpenses, rawPurchases, timePeriod]);
+  }, [filteredRawInvoices, filteredRawExpenses, filteredRawPurchases, timePeriod]);
 
   // Donut chart data
   const donutData = React.useMemo(() => {
@@ -352,7 +366,7 @@ const Analytics = () => {
     const categoriesMap = {};
     
     // Group raw business expenses
-    rawExpenses.forEach(exp => {
+    filteredRawExpenses.forEach(exp => {
       const date = exp.date || exp.createdAt;
       if (checkDateInPeriod(date, timePeriod)) {
         const catName = exp.category?.name || 'Operations';
@@ -361,7 +375,7 @@ const Analytics = () => {
     });
 
     // Group purchases into dynamic 'Procurements' category
-    rawPurchases.forEach(pr => {
+    filteredRawPurchases.forEach(pr => {
       const date = pr.purchaseDate || pr.createdAt;
       if (checkDateInPeriod(date, timePeriod)) {
         const amount = pr.grandTotal || pr.totalAmount || 0;
@@ -381,12 +395,12 @@ const Analytics = () => {
       ...item,
       pct: Number((item.amount / totalOut * 100).toFixed(1))
     })).slice(0, 5);
-  }, [rawExpenses, rawPurchases, stats.outflow, timePeriod]);
+  }, [filteredRawExpenses, filteredRawPurchases, stats.outflow, timePeriod]);
 
   // Consolidated audit ledger log (Recent transactions)
   const consolidatedTransactions = React.useMemo(() => {
     const feed = [
-      ...rawInvoices.map(inv => ({
+      ...filteredRawInvoices.map(inv => ({
         id: inv._id,
         type: 'Inflow',
         category: 'Sales Revenue',
@@ -397,7 +411,7 @@ const Analytics = () => {
         method: 'Bank Transfer',
         status: inv.paymentStatus || 'Pending'
       })),
-      ...rawExpenses.map(exp => ({
+      ...filteredRawExpenses.map(exp => ({
         id: exp._id,
         type: 'Outflow',
         category: exp.category?.name || 'Office Supplies',
@@ -408,7 +422,7 @@ const Analytics = () => {
         method: exp.paymentMethod || 'UPI',
         status: exp.paymentStatus || 'Paid'
       })),
-      ...rawPurchases.map(pr => ({
+      ...filteredRawPurchases.map(pr => ({
         id: pr._id,
         type: 'Outflow',
         category: 'Procurements',
@@ -439,7 +453,7 @@ const Analytics = () => {
       }
       return true;
     });
-  }, [rawInvoices, rawExpenses, rawPurchases, txFilter, searchTerm]);
+  }, [filteredRawInvoices, filteredRawExpenses, filteredRawPurchases, txFilter, searchTerm]);
 
   // Date range formatted label for header
   const dateRangeLabel = React.useMemo(() => {

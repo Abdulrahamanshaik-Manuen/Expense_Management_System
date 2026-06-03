@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
@@ -27,10 +26,6 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json()); // Parse JSON bodies
-
-// Serve uploaded receipts and documents statically
-const __dirname = path.resolve();
-app.use('/uploads', express.static(path.join(__dirname, '/uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);

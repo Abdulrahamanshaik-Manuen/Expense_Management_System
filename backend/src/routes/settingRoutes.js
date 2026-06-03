@@ -66,10 +66,12 @@ router.post(
 
     if (req.files) {
       if (req.files['logo'] && req.files['logo'][0]) {
-        settings.logoUrl = `/uploads/${req.files['logo'][0].filename}`;
+        const base64Data = req.files['logo'][0].buffer.toString('base64');
+        settings.logoUrl = `data:${req.files['logo'][0].mimetype};base64,${base64Data}`;
       }
       if (req.files['logoSquare'] && req.files['logoSquare'][0]) {
-        settings.logoSquareUrl = `/uploads/${req.files['logoSquare'][0].filename}`;
+        const base64Data = req.files['logoSquare'][0].buffer.toString('base64');
+        settings.logoSquareUrl = `data:${req.files['logoSquare'][0].mimetype};base64,${base64Data}`;
       }
     }
 
@@ -125,10 +127,12 @@ router.put(
 
     if (req.files) {
       if (req.files['logo'] && req.files['logo'][0]) {
-        settings.logoUrl = `/uploads/${req.files['logo'][0].filename}`;
+        const base64Data = req.files['logo'][0].buffer.toString('base64');
+        settings.logoUrl = `data:${req.files['logo'][0].mimetype};base64,${base64Data}`;
       }
       if (req.files['logoSquare'] && req.files['logoSquare'][0]) {
-        settings.logoSquareUrl = `/uploads/${req.files['logoSquare'][0].filename}`;
+        const base64Data = req.files['logoSquare'][0].buffer.toString('base64');
+        settings.logoSquareUrl = `data:${req.files['logoSquare'][0].mimetype};base64,${base64Data}`;
       }
     }
 

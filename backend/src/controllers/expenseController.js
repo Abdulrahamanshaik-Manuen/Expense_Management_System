@@ -1,4 +1,5 @@
 import Expense from '../models/Expense.js';
+import { generateExpenseVoucherBuffer } from '../utils/generateInvoice.js';
 
 // @desc    Create a new expense
 // @route   POST /api/expenses
@@ -9,7 +10,8 @@ export const createExpense = async (req, res) => {
     let receiptUrl = '';
 
     if (req.file) {
-      receiptUrl = `/${req.file.path.replace(/\\/g, '/')}`; // Ensure proper slash format
+      const base64Data = req.file.buffer.toString('base64');
+      receiptUrl = `data:${req.file.mimetype};base64,${base64Data}`;
     }
 
     const expense = new Expense({
@@ -153,7 +155,8 @@ export const updateExpense = async (req, res) => {
     if (companyId !== undefined) expense.companyId = companyId;
 
     if (req.file) {
-      expense.receiptUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+      const base64Data = req.file.buffer.toString('base64');
+      expense.receiptUrl = `data:${req.file.mimetype};base64,${base64Data}`;
     }
 
     const updatedExpense = await expense.save();
@@ -164,6 +167,30 @@ export const updateExpense = async (req, res) => {
     ]);
 
     res.json(populated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Download an Expense Voucher as PDF
+// @route   GET /api/expenses/:id/download
+// @access  Private
+export const downloadExpenseVoucher = async (req, res) => {
+  try {
+    const expense = await Expense.findById(req.params.id)
+      .populate('category', 'name')
+      .populate('companyId');
+
+    if (!expense) {
+      return res.status(404).json({ message: 'Expense not found.' });
+    }
+
+    const pdfBuffer = await generateExpenseVoucherBuffer(expense);
+    const ref = `EXP-${expense._id.toString().slice(-6).toUpperCase()}`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=Expense_Voucher_${ref}.pdf`);
+    res.send(pdfBuffer);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

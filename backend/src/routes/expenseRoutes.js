@@ -6,11 +6,15 @@ import {
   updateExpensePaymentStatus,
   deleteExpense,
   updateExpense,
+  downloadExpenseVoucher,
 } from '../controllers/expenseController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { upload } from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
+
+router.route('/:id/download')
+  .get(protect, downloadExpenseVoucher);
 
 router.route('/')
   .post(protect, upload.single('receipt'), createExpense)

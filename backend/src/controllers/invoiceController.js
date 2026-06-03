@@ -1,7 +1,7 @@
 import Invoice from '../models/Invoice.js';
 import SaleInvoice from '../models/SaleInvoice.js';
 import CompanySetting from '../models/CompanySetting.js';
-import { generateInvoiceBuffer, generateSalesInvoicePDF } from '../utils/generateInvoice.js';
+import { generateInvoiceBuffer } from '../utils/generateInvoice.js';
 import asyncHandler from 'express-async-handler';
 
 // Helper to generate initials/acronym from company name
@@ -143,15 +143,6 @@ export const createInvoice = asyncHandler(async (req, res) => {
 
   const createdInvoice = await invoice.save();
 
-  // Generate and set PDF URL
-  try {
-    const pdfUrl = await generateSalesInvoicePDF(createdInvoice);
-    createdInvoice.pdfUrl = pdfUrl;
-    await createdInvoice.save();
-  } catch (pdfErr) {
-    console.error('Error generating sales PDF:', pdfErr);
-  }
-
   res.status(201).json(createdInvoice);
 });
 
@@ -161,19 +152,6 @@ export const createInvoice = asyncHandler(async (req, res) => {
 export const getInvoices = asyncHandler(async (req, res) => {
   const invoices = await SaleInvoice.find({}).sort({ createdAt: -1 }).populate('createdBy', 'name email').populate('companyId');
   
-  // Dynamic self-healing: generate PDFs for any legacy invoices missing a pdfUrl
-  for (let inv of invoices) {
-    if (!inv.pdfUrl) {
-      try {
-        const pdfUrl = await generateSalesInvoicePDF(inv);
-        inv.pdfUrl = pdfUrl;
-        await inv.save();
-      } catch (pdfErr) {
-        console.error(`Error auto-generating legacy PDF for invoice ${inv.invoiceNumber}:`, pdfErr);
-      }
-    }
-  }
-
   res.json(invoices);
 });
 
@@ -219,15 +197,6 @@ export const updateInvoicePayment = asyncHandler(async (req, res) => {
   }
 
   const updatedInvoice = await invoice.save();
-
-  // Regenerate PDF on payment update
-  try {
-    const pdfUrl = await generateSalesInvoicePDF(updatedInvoice);
-    updatedInvoice.pdfUrl = pdfUrl;
-    await updatedInvoice.save();
-  } catch (pdfErr) {
-    console.error('Error generating sales PDF on payment:', pdfErr);
-  }
 
   res.json(updatedInvoice);
 });
@@ -323,15 +292,6 @@ export const updateInvoice = asyncHandler(async (req, res) => {
   }
 
   const updatedInvoice = await invoice.save();
-
-  // Regenerate PDF
-  try {
-    const pdfUrl = await generateSalesInvoicePDF(updatedInvoice);
-    updatedInvoice.pdfUrl = pdfUrl;
-    await updatedInvoice.save();
-  } catch (pdfErr) {
-    console.error('Error generating sales PDF on edit:', pdfErr);
-  }
 
   res.json(updatedInvoice);
 });

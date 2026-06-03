@@ -48,7 +48,8 @@ export const createPurchaseEntry = async (req, res) => {
 
     let invoiceUrl = '';
     if (req.file) {
-      invoiceUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+      const base64Data = req.file.buffer.toString('base64');
+      invoiceUrl = `data:${req.file.mimetype};base64,${base64Data}`;
     } else {
       return res.status(400).json({ message: 'Please upload a supporting supplier invoice document.' });
     }
@@ -202,7 +203,8 @@ export const updatePurchaseEntry = async (req, res) => {
 
     let invoiceUrl = entry.invoiceUrl;
     if (req.file) {
-      invoiceUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+      const base64Data = req.file.buffer.toString('base64');
+      invoiceUrl = `data:${req.file.mimetype};base64,${base64Data}`;
     }
 
     let parsedItems = items;

@@ -1,6 +1,6 @@
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Vendor from '../models/Vendor.js';
-import { generatePOInvoice, generateInvoiceBuffer } from '../utils/generateInvoice.js';
+import { generateInvoiceBuffer } from '../utils/generateInvoice.js';
 import asyncHandler from 'express-async-handler';
 
 // Helper to generate a unique PO number
@@ -53,10 +53,6 @@ export const createPurchaseOrder = async (req, res) => {
       status: req.body.status || 'Draft',
       companyId: companyId || '6a0d837fd7ace7063e6a8379',
     });
-
-    // Generate the PDF
-    const pdfUrl = await generatePOInvoice(po, vendor);
-    po.pdfUrl = pdfUrl;
 
     const createdPO = await po.save();
     res.status(201).json(createdPO);
@@ -126,7 +122,7 @@ export const downloadPurchaseOrder = asyncHandler(async (req, res) => {
   const { format = 'pdf' } = req.query;
 
   const po = await PurchaseOrder.findById(req.params.id)
-    .populate('vendor', 'name email address phone gstNumber paymentTerms contactPerson');
+    .populate('vendor', 'name email address phone gstNumber paymentTerms contactPerson bankName accountHolderName accountNumber ifscCode');
   if (!po) {
     res.status(404);
     throw new Error('Purchase Order not found');
@@ -134,6 +130,7 @@ export const downloadPurchaseOrder = asyncHandler(async (req, res) => {
 
   // Normalise into the same invoice shape the unified generator expects
   const invoiceData = {
+    titleText:       'PURCHASE VOUCHER',
     invoiceNumber:   po.poNumber,
     date:            po.createdAt || new Date(),
     customerName:    po.vendor?.name || 'Vendor',
@@ -143,10 +140,15 @@ export const downloadPurchaseOrder = asyncHandler(async (req, res) => {
     totalAmount:     po.totalAmount || 0,
     taxAmount:       po.taxAmount   || 0,
     companyId:       po.companyId || '6a0d837fd7ace7063e6a8379',
+    supplierBankName:          po.vendor?.bankName,
+    supplierAccountHolderName: po.vendor?.accountHolderName || po.vendor?.name,
+    supplierAccountNumber:     po.vendor?.accountNumber,
+    supplierIfscCode:          po.vendor?.ifscCode,
     items: (po.items || []).map(item => ({
       description: item.name || 'Item',
       quantity:    item.quantity || 1,
       unitPrice:   item.price   || 0,
+      taxRate:     item.taxRate !== undefined ? item.taxRate : 18,
       total:       (item.quantity || 1) * (item.price || 0),
     })),
   };
@@ -208,11 +210,6 @@ export const updatePurchaseOrder = asyncHandler(async (req, res) => {
 
   po.taxAmount = taxAmount;
   po.totalAmount = subtotal + taxAmount;
-
-  // Generate the PDF
-  const updatedVendor = await Vendor.findById(po.vendor);
-  const pdfUrl = await generatePOInvoice(po, updatedVendor);
-  po.pdfUrl = pdfUrl;
 
   const updatedPO = await po.save();
   res.json(updatedPO);
