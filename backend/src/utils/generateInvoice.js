@@ -11,8 +11,7 @@ import fs from 'fs';
 
 /** Indian Currency Number-to-Words */
 function priceToWords(price, currency = 'INR') {
-  const isUSD = currency === 'USD';
-  const unitName = isUSD ? 'Dollars' : 'Rupees';
+  const unitName = 'Rupees';
 
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
@@ -20,18 +19,6 @@ function priceToWords(price, currency = 'INR') {
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
   if (num === 0) return `Zero ${unitName} only`;
-
-  if (isUSD) {
-    function toWordsUSD(n) {
-      if (n < 20) return a[n];
-      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
-      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
-      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
-      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
-      return 'Overflow';
-    }
-    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
-  }
 
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -147,7 +134,7 @@ export async function generateInvoiceBuffer(invoice, format) {
             rows: [
               new TableRow({
                 children: [
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: isPO ? 'VENDOR / SUPPLIER INFO' : 'FROM', bold: true })] })], shading: { fill: 'E8E5D3' } }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: isPO ? 'VENDOR / SUPPLIER ' : 'FROM', bold: true })] })], shading: { fill: 'E8E5D3' } }),
                   new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: isPO ? 'DELIVER TO (CORPORATE BILLING)' : 'BILL TO', bold: true })] })], shading: { fill: 'E8E5D3' } }),
                 ]
               }),
@@ -440,12 +427,12 @@ function _drawInvoicePDF(
   const clientName = (invoice.customerName || invoice.client || 'N/A').toUpperCase();
 
   doc.lineWidth(1).strokeColor('#cccccc');
-  
+
   // Left Box (FROM or VENDOR)
   doc.rect(40, billingY, 240, colH).stroke();
   doc.fillColor('#e8e5d3').rect(41, billingY + 1, 238, 16).fill();
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
-  doc.text(isPO ? 'VENDOR / SUPPLIER INFO' : 'FROM', 50, billingY + 4);
+  doc.text(isPO ? 'VENDOR / SUPPLIER' : 'FROM', 50, billingY + 4);
 
   if (isPO) {
     // Left is Vendor Info
@@ -486,8 +473,8 @@ function _drawInvoicePDF(
   const tableY = billingY + colH + 14;
   const colX = isPO ? [40, 75, 290, 350, 410, 475, 555] : [40, 75, 320, 395, 470, 555];
   const colW = isPO ? [35, 215, 60, 60, 65, 80] : [35, 245, 75, 75, 85];
-  const hdrLabels = isPO 
-    ? ['S NO', 'Description Specs', 'Qty', 'Unit Price', 'GST Rate', 'Total Cost'] 
+  const hdrLabels = isPO
+    ? ['S NO', 'Description Specs', 'Qty', 'Unit Price', 'GST Rate', 'Total Cost']
     : ['S NO', 'Description of Services', 'HSN Code', 'Quantity', 'Amount'];
 
   doc.fillColor('#e8e5d3').rect(40, tableY, 515, 20).fill();
@@ -766,10 +753,10 @@ export async function generatePurchaseVoucherBuffer(purchaseEntry) {
     doc.font('Helvetica').text(`${item.quantity} ${item.unit || 'Pcs'}`, colX[2], rowY + 9, { width: colW[2], align: 'right' });
 
     // Discount
-    doc.text(`\u20B9${Number(item.discountAmount || 0).toLocaleString()}/-`, colX[3], rowY + 9, { width: colW[3], align: 'right' });
+    doc.text(`${Number(item.discountAmount || 0).toLocaleString()}/-`, colX[3], rowY + 9, { width: colW[3], align: 'right' });
 
     // Total Amount
-    doc.font('Helvetica-Bold').text(`\u20B9${Number(item.totalItemAmount || (item.quantity * item.price)).toLocaleString()}/-`, colX[4], rowY + 9, { width: colW[4] - 5, align: 'right' });
+    doc.font('Helvetica-Bold').text(`${Number(item.totalItemAmount || (item.quantity * item.price)).toLocaleString()}/-`, colX[4], rowY + 9, { width: colW[4] - 5, align: 'right' });
 
     rowY += rowH;
   });
@@ -781,7 +768,7 @@ export async function generatePurchaseVoucherBuffer(purchaseEntry) {
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
   doc.text('TOTAL INVOICE VALUE:', colX[1] + 5, rowY + 9);
   doc.text(
-    `\u20B9${Number(purchaseEntry.grandTotal || purchaseEntry.totalAmount || 0).toLocaleString()}/-`,
+    `${Number(purchaseEntry.grandTotal || purchaseEntry.totalAmount || 0).toLocaleString()}/-`,
     colX[4], rowY + 9, { width: colW[4] - 5, align: 'right' }
   );
   rowY += rowH;
@@ -803,9 +790,9 @@ export async function generatePurchaseVoucherBuffer(purchaseEntry) {
   doc.lineWidth(0.5).strokeColor('#cbd5e1').rect(305, summaryBorderY, 250, 60).stroke();
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#333333').text('BALANCES OUTSTANDING BREAKDOWN:', 315, summaryBorderY + 10);
   doc.fontSize(8).font('Helvetica').fillColor('#555555').text('Amount Paid:', 315, summaryBorderY + 26);
-  doc.font('Helvetica-Bold').fillColor('#000000').text(`\u20B9${Number(purchaseEntry.amountPaid || 0).toLocaleString()}/-`, 395, summaryBorderY + 26);
+  doc.font('Helvetica-Bold').fillColor('#000000').text(`${Number(purchaseEntry.amountPaid || 0).toLocaleString()}/-`, 395, summaryBorderY + 26);
   doc.font('Helvetica').fillColor('#555555').text('Amount Due (Outstanding Dues):', 315, summaryBorderY + 40);
-  doc.font('Helvetica-Bold').fillColor('#dc2626').text(`\u20B9${Number(purchaseEntry.amountDue || 0).toLocaleString()}/-`, 440, summaryBorderY + 40);
+  doc.font('Helvetica-Bold').fillColor('#dc2626').text(`${Number(purchaseEntry.amountDue || 0).toLocaleString()}/-`, 440, summaryBorderY + 40);
 
   // ── Amount in Words ───────────────────────────────────────
   rowY = summaryBorderY + 78;
@@ -864,7 +851,7 @@ export async function generateExpenseVoucherBuffer(expense) {
   const boxW = 160; const boxX = 555 - boxW;
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a202c');
   doc.text(`Date: ${formattedDate}`, boxX, headerY + 5, { align: 'right', width: boxW });
-  doc.text(`Voucher No: EXP-${expense._id.toString().slice(-6).toUpperCase()}`, boxX, headerY + 20, { align: 'right', width: boxW });
+  doc.text(`Voucher No: ${expense.voucherNo || ('EXP-' + expense._id.toString().slice(-6).toUpperCase())}`, boxX, headerY + 20, { align: 'right', width: boxW });
 
   // ── Title ─────────────────────────────────────────────────
   doc.fontSize(20).font('Helvetica-Bold').fillColor('#002e6e').text('DEBIT PAYMENT VOUCHER', 40, 130, { align: 'center' });
@@ -873,7 +860,7 @@ export async function generateExpenseVoucherBuffer(expense) {
   const infoY = 170;
   const infoH = 80;
   doc.lineWidth(1).strokeColor('#cbd5e1').rect(40, infoY, 515, infoH).stroke();
-  
+
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#555555');
   doc.text('Paid Out To:', 50, infoY + 10);
   doc.font('Helvetica-Bold').fillColor('#000000').text(expense.paidTo || 'N/A', 150, infoY + 10);
@@ -902,7 +889,7 @@ export async function generateExpenseVoucherBuffer(expense) {
   doc.fillColor('#e8e5d3').rect(40, tableY, 515, 20).fill();
   doc.lineWidth(1).strokeColor('#000000').rect(40, tableY, 515, 20).stroke();
   for (let i = 1; i < colX.length - 1; i++) doc.moveTo(colX[i], tableY).lineTo(colX[i], tableY + 20).stroke();
-  
+
   doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
   tableHdrs.forEach((hdr, idx) => {
     const align = (idx === 0) ? 'center' : (idx === 1 ? 'left' : 'right');

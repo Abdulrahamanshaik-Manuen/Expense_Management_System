@@ -22,8 +22,7 @@ import {
 
 /** Indian/Western Currency Number-to-Words */
 function priceToWords(price, currency = 'INR') {
-  const isUSD = currency === 'USD';
-  const unitName = isUSD ? 'Dollars' : 'Rupees';
+  const unitName = 'Rupees';
 
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
@@ -31,18 +30,6 @@ function priceToWords(price, currency = 'INR') {
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
   if (num === 0) return `Zero ${unitName} only`;
-
-  if (isUSD) {
-    function toWordsUSD(n) {
-      if (n < 20) return a[n];
-      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
-      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
-      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
-      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
-      return 'Overflow';
-    }
-    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
-  }
 
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -74,7 +61,7 @@ const Sales = () => {
   const activeCompanyId = localStorage.getItem('selectedCompanyId');
   const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
   const activeCurrency = activeCompany?.currency || 'INR';
-  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   const filteredInvoices = invoices.filter(inv => {
     const matchCompany = !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId;
@@ -706,7 +693,7 @@ const Sales = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Base Pricing ($)</label>
+                  <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Base Pricing</label>
                   <input
                     type="number"
                     required
@@ -889,8 +876,8 @@ const Sales = () => {
                     <div className="col-span-3">Catalogue Auto-fill</div>
                     <div className="col-span-3">Item Title / Detail</div>
                     <div className="col-span-1 text-center">Qty</div>
-                    <div className="col-span-2">Price ({currencySymbol})</div>
-                    <div className="col-span-1">Disc ({currencySymbol})</div>
+                    <div className="col-span-2">Price</div>
+                    <div className="col-span-1">Disc</div>
                     <div className="col-span-2">GST %</div>
                   </div>
                 )}
@@ -933,7 +920,7 @@ const Sales = () => {
                           type="number"
                           required
                           value={item.quantity}
-                          onChange={(e) => updateInvoiceItem(index, 'quantity', Number(e.target.value))}
+                          onChange={(e) => updateInvoiceItem(index, 'quantity', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9 text-center"
                         />
                       </div>
@@ -945,7 +932,7 @@ const Sales = () => {
                           type="number"
                           required
                           value={item.price}
-                          onChange={(e) => updateInvoiceItem(index, 'price', Number(e.target.value))}
+                          onChange={(e) => updateInvoiceItem(index, 'price', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                           placeholder="Price"
                         />
@@ -957,7 +944,7 @@ const Sales = () => {
                         <input
                           type="number"
                           value={item.discount}
-                          onChange={(e) => updateInvoiceItem(index, 'discount', Number(e.target.value))}
+                          onChange={(e) => updateInvoiceItem(index, 'discount', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9"
                           placeholder="Disc"
                         />
@@ -970,7 +957,7 @@ const Sales = () => {
                           <input
                             type="number"
                             value={item.taxRate}
-                            onChange={(e) => updateInvoiceItem(index, 'taxRate', Number(e.target.value))}
+                            onChange={(e) => updateInvoiceItem(index, 'taxRate', e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 h-9 text-center"
                           />
                         </div>
@@ -995,7 +982,7 @@ const Sales = () => {
               {/* Payment logged */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Advanced Paid ({currencySymbol})</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Advanced Paid</label>
                   <input
                     type="number"
                     value={invoiceForm.amountPaid}

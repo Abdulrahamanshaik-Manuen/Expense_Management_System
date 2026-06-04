@@ -1,16 +1,70 @@
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Vendor from '../models/Vendor.js';
+import CompanySetting from '../models/CompanySetting.js';
 import { generateInvoiceBuffer } from '../utils/generateInvoice.js';
 import asyncHandler from 'express-async-handler';
 
+const getCompanyPrefix = (name) => {
+  if (!name) return 'MIT';
+  const upperName = name.toUpperCase().trim();
+  if (upperName.includes('MANUEN INFOTECH')) {
+    return 'MIT';
+  }
+  const words = upperName.split(/\s+/).filter(Boolean);
+  if (words.length >= 3) {
+    return words.slice(0, 3).map(w => w[0]).join('');
+  } else if (words.length === 2) {
+    const w1 = words[0];
+    const w2 = words[1];
+    if (w2.startsWith('INFO') && w2.length > 4) {
+      return w1[0] + 'IT';
+    }
+    return w1[0] + w2[0];
+  } else {
+    return upperName.slice(0, 3);
+  }
+};
+
 // Helper to generate a unique PO number
-const generatePONumber = async () => {
+const generatePONumber = async (companyId) => {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+  
+  let companyPrefix = 'MIT';
+  if (companyId) {
+    const company = await CompanySetting.findById(companyId);
+    if (company && company.companyName) {
+      companyPrefix = getCompanyPrefix(company.companyName);
+    }
+  } else {
+    const defaultCompany = await CompanySetting.findOne();
+    if (defaultCompany && defaultCompany.companyName) {
+      companyPrefix = getCompanyPrefix(defaultCompany.companyName);
+    }
+  }
+
+  const prefix = `${companyPrefix}-PO${dateStr}`;
   const count = await PurchaseOrder.countDocuments({
-    poNumber: new RegExp(`^PO-${dateStr}`),
+    poNumber: new RegExp(`^${prefix}`),
   });
-  const sequentialNum = String(count + 1).padStart(3, '0');
-  return `PO-${dateStr}-${sequentialNum}`;
+
+  // Find highest serial number to avoid duplicate generation if previous POs were deleted
+  let nextNum = count + 1;
+  const lastPO = await PurchaseOrder.findOne({
+    poNumber: new RegExp(`^${prefix}`),
+  }).sort({ poNumber: -1 });
+
+  if (lastPO && lastPO.poNumber) {
+    const match = lastPO.poNumber.match(/\d+$/);
+    if (match) {
+      const lastSerial = parseInt(match[0], 10);
+      if (!isNaN(lastSerial) && lastSerial >= nextNum) {
+        nextNum = lastSerial + 1;
+      }
+    }
+  }
+
+  const sequentialNum = String(nextNum).padStart(3, '0');
+  return `${prefix}${sequentialNum}`;
 };
 
 // @desc    Create a new Purchase Order & generate PDF
@@ -41,7 +95,7 @@ export const createPurchaseOrder = async (req, res) => {
     });
 
     const totalAmount = subtotal + taxAmount;
-    const poNumber = await generatePONumber();
+    const poNumber = await generatePONumber(companyId);
 
     const po = new PurchaseOrder({
       poNumber,
@@ -69,7 +123,8 @@ export const getPurchaseOrders = async (req, res) => {
     const pos = await PurchaseOrder.find({})
       .populate('vendor', 'name email gstNumber')
       .populate('createdBy', 'name email')
-      .populate('companyId');
+      .populate('companyId')
+      .sort({ createdAt: -1 });
     res.json(pos);
   } catch (error) {
     res.status(500).json({ message: error.message });

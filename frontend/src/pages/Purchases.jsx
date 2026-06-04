@@ -30,8 +30,7 @@ import {
 
 /** Indian/Western Currency Number-to-Words */
 function priceToWords(price, currency = 'INR') {
-  const isUSD = currency === 'USD';
-  const unitName = isUSD ? 'Dollars' : 'Rupees';
+  const unitName = 'Rupees';
 
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
@@ -39,18 +38,6 @@ function priceToWords(price, currency = 'INR') {
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
   if (num === 0) return `Zero ${unitName} only`;
-
-  if (isUSD) {
-    function toWordsUSD(n) {
-      if (n < 20) return a[n];
-      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
-      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
-      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
-      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
-      return 'Overflow';
-    }
-    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
-  }
 
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -82,7 +69,7 @@ const Purchases = () => {
   const activeCompanyId = localStorage.getItem('selectedCompanyId');
   const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
   const activeCurrency = activeCompany?.currency || 'INR';
-  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   const filteredEntries = entries.filter(entry => {
     const matchCompany = !activeCompanyId || (entry.companyId?._id || entry.companyId) === activeCompanyId;
@@ -228,6 +215,8 @@ const Purchases = () => {
   const [entryForm, setEntryForm] = useState({
     poRef: '',
     vendor: '',
+    supplierName: '',
+    supplierGSTIN: '',
     invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     purchaseDate: new Date().toISOString().split('T')[0],
@@ -279,6 +268,8 @@ const Purchases = () => {
         setEntryForm(prev => ({
           ...prev,
           vendor: venRes.data[0]._id,
+          supplierName: venRes.data[0].name || '',
+          supplierGSTIN: venRes.data[0].gstNumber || '',
           companyId: localStorage.getItem('selectedCompanyId') || settingsRes.data[0]?._id || ''
         }));
       }
@@ -499,16 +490,20 @@ const Purchases = () => {
     const additionalChargesTotal = transportation + packing + loading + other;
     const grandTotal = subTotal - totalDiscount + additionalChargesTotal;
 
-    let paid = Number(form.amountPaid || 0);
-    let status = form.paymentStatus;
+    // amountPaid is always user-controlled. Auto-derive paymentStatus from amount.
+    const paidNum = Math.max(0, Math.min(Number(form.amountPaid || 0), grandTotal));
+    const amountDue = grandTotal - paidNum;
 
-    if (status === 'Paid') {
-      paid = grandTotal;
-    } else if (status === 'Unpaid') {
-      paid = 0;
+    let paymentStatus;
+    if (grandTotal <= 0) {
+      paymentStatus = form.paymentStatus || 'Unpaid';
+    } else if (paidNum <= 0) {
+      paymentStatus = 'Unpaid';
+    } else if (paidNum >= grandTotal) {
+      paymentStatus = 'Paid';
+    } else {
+      paymentStatus = 'Partial';
     }
-
-    const amountDue = grandTotal - paid;
 
     return {
       ...form,
@@ -517,8 +512,9 @@ const Purchases = () => {
       totalDiscount,
       additionalChargesTotal,
       grandTotal,
-      amountPaid: paid.toString(),
-      amountDue: amountDue >= 0 ? amountDue : 0
+      amountPaid: form.amountPaid,
+      amountDue: amountDue >= 0 ? amountDue : 0,
+      paymentStatus,
     };
   };
 
@@ -545,7 +541,15 @@ const Purchases = () => {
   };
 
   const handleEntryFieldChange = (field, value) => {
-    const updated = { ...entryForm, [field]: value };
+    let extra = {};
+    if (field === 'vendor') {
+      const selectedVen = vendors.find(v => v._id === value);
+      if (selectedVen) {
+        extra.supplierName = selectedVen.name || '';
+        extra.supplierGSTIN = selectedVen.gstNumber || '';
+      }
+    }
+    const updated = { ...entryForm, [field]: value, ...extra };
     setEntryForm(calculateTotals(updated));
   };
 
@@ -554,7 +558,9 @@ const Purchases = () => {
       const reset = {
         ...entryForm,
         poRef: '',
-        vendor: vendors[0]?._id || '',
+        vendor: entryForm.vendor,
+        supplierName: entryForm.supplierName,
+        supplierGSTIN: entryForm.supplierGSTIN,
         subTotal: 0,
         totalDiscount: 0,
         grandTotal: 0,
@@ -566,10 +572,14 @@ const Purchases = () => {
 
     const selectedPo = orders.find(o => o._id === poId);
     if (selectedPo) {
+      const poVendorId = selectedPo.vendor?._id || selectedPo.vendor || '';
+      const selectedVen = vendors.find(v => v._id === poVendorId);
       const mapped = {
         ...entryForm,
         poRef: poId,
-        vendor: selectedPo.vendor?._id || selectedPo.vendor || '',
+        vendor: poVendorId,
+        supplierName: selectedVen?.name || '',
+        supplierGSTIN: selectedVen?.gstNumber || '',
         items: selectedPo.items.map(item => ({
           name: item.name,
           code: '',
@@ -589,15 +599,13 @@ const Purchases = () => {
   // Submit Purchase Entry
   const handleEntrySubmit = async (e) => {
     e.preventDefault();
-    if (!invoiceFile && !isEditingEntry) {
-      alert('Supporting Supplier Invoice document upload is required.');
-      return;
-    }
     try {
       setLoading(true);
       const data = new FormData();
       data.append('poRef', entryForm.poRef);
       data.append('vendor', entryForm.vendor);
+      data.append('supplierName', entryForm.supplierName);
+      data.append('supplierGSTIN', entryForm.supplierGSTIN);
       data.append('invoiceNumber', entryForm.invoiceNumber);
       data.append('invoiceDate', entryForm.invoiceDate);
       data.append('purchaseDate', entryForm.purchaseDate);
@@ -640,6 +648,8 @@ const Purchases = () => {
       setEntryForm({
         poRef: '',
         vendor: vendors[0]?._id || '',
+        supplierName: vendors[0]?.name || '',
+        supplierGSTIN: vendors[0]?.gstNumber || '',
         invoiceNumber: '',
         invoiceDate: new Date().toISOString().split('T')[0],
         purchaseDate: new Date().toISOString().split('T')[0],
@@ -680,6 +690,8 @@ const Purchases = () => {
     setEntryForm({
       poRef: entry.poRef?._id || entry.poRef || '',
       vendor: entry.vendor?._id || entry.vendor || '',
+      supplierName: entry.supplierName || '',
+      supplierGSTIN: entry.supplierGSTIN || '',
       invoiceNumber: entry.invoiceNumber || '',
       invoiceDate: entry.invoiceDate ? new Date(entry.invoiceDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       purchaseDate: entry.purchaseDate ? new Date(entry.purchaseDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -774,20 +786,10 @@ const Purchases = () => {
           <p className="text-[11px] text-slate-500 mt-1">Pending payments to vendors</p>
         </div>
 
-        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Issued PO Value</span>
-            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-              <ShoppingBag size={16} />
-            </div>
-          </div>
-          <h3 className="text-xl font-black text-slate-900">{currencySymbol}{totalPOAmount.toLocaleString()}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">{orders.length} Purchase Orders active</p>
-        </div>
 
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Standard Suppliers</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Registered Vendors</span>
             <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
               <Building size={16} />
             </div>
@@ -810,22 +812,13 @@ const Purchases = () => {
             <Landmark size={14} /> Purchase Entries ({filteredEntries.length})
           </button>
           <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${activeTab === 'orders'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent'
-              }`}
-          >
-            <FileCheck size={14} /> Purchase Orders ({filteredOrders.length})
-          </button>
-          <button
             onClick={() => setActiveTab('vendors')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${activeTab === 'vendors'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
               : 'text-slate-500 hover:text-slate-805 hover:bg-white shadow-sm border border-transparent'
               }`}
           >
-            <Building size={14} /> Suppliers ({filteredVendors.length})
+            <Building size={14} /> Vendors ({filteredVendors.length})
           </button>
         </div>
 
@@ -838,6 +831,8 @@ const Purchases = () => {
                 setEntryForm({
                   poRef: '',
                   vendor: vendors[0]?._id || '',
+                  supplierName: vendors[0]?.name || '',
+                  supplierGSTIN: vendors[0]?.gstNumber || '',
                   invoiceNumber: '',
                   invoiceDate: new Date().toISOString().split('T')[0],
                   purchaseDate: new Date().toISOString().split('T')[0],
@@ -865,24 +860,6 @@ const Purchases = () => {
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5"
             >
               <Plus size={14} />Purchase Entry
-            </button>
-          )}
-          {activeTab === 'orders' && (
-            <button
-              onClick={() => {
-                setIsEditingOrder(false);
-                setEditingOrderId(null);
-                setPoForm({
-                  vendor: vendors[0]?._id || '',
-                  items: [{ name: '', quantity: 1, price: '', taxRate: 18 }],
-                  companyId: localStorage.getItem('selectedCompanyId') || companyProfiles[0]?._id || '',
-                  status: 'Draft',
-                });
-                setShowAddOrder(true);
-              }}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-lg shadow-blue-500/10 hover:-translate-y-0.5"
-            >
-              <Plus size={14} /> Draft PO
             </button>
           )}
           {activeTab === 'vendors' && (
@@ -1005,12 +982,12 @@ const Purchases = () => {
                           <td className="px-6 py-4">
                             <p className="font-extrabold text-slate-900">{currencySymbol}{(entry.grandTotal || entry.totalAmount || 0).toLocaleString()}</p>
                             <p className="text-[10px] text-slate-500 mt-0.5">
-                              Paid: <span className="font-bold text-emerald-600">{currencySymbol}{entry.amountPaid.toLocaleString()}</span> via <span className="font-semibold text-slate-700">{entry.paymentMode || 'Cash'}</span>
+                              Paid: <span className="font-bold text-emerald-600">{currencySymbol}{(entry.amountPaid || 0).toLocaleString()}</span> via <span className="font-semibold text-slate-700">{entry.paymentMode || 'Cash'}</span>
                             </p>
                             <p className="text-[10px] text-slate-400 mt-0.5">Charges: {currencySymbol}{(entry.additionalChargesTotal || 0).toLocaleString()}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="font-extrabold text-red-650">{currencySymbol}{entry.amountDue.toLocaleString()}</p>
+                            <p className="font-extrabold text-red-650">{currencySymbol}{(entry.amountDue || 0).toLocaleString()}</p>
                             <p className="text-[10px] text-slate-550 mt-0.5 flex items-center gap-1.5">
                               Status:
                               <span className={`inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-full ${entry.paymentStatus === 'Paid'
@@ -1065,105 +1042,15 @@ const Purchases = () => {
             </div>
           )}
 
-          {/* TAB 2: Purchase Orders */}
-          {activeTab === 'orders' && (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-                <div>
-                  <h4 className="font-extrabold text-sm text-slate-800">Issued Purchase Orders (POs)</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Corporate PO records generated for vendor fulfillment</p>
-                </div>
-                <FileCheck className="text-blue-600" size={18} />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                      <th className="px-6 py-4">PO Number</th>
-                      <th className="px-6 py-4">Supplier Vendor</th>
-                      <th className="px-6 py-4">Aggregates Total</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-sm text-slate-700">
-                    {filteredOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="text-center py-12 text-slate-400 font-medium">
-                          No Purchase Orders matching the selected filters.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredOrders.map((po) => (
-                        <tr key={po._id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 font-bold text-slate-900">{po.poNumber}</td>
-                          <td className="px-6 py-4">
-                            <p className="font-semibold text-slate-800">{po.vendor?.name}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">GST: {po.vendor?.gstNumber || 'N/A'}</p>
-                          </td>
-                          <td className="px-6 py-4 font-extrabold text-emerald-600">₹{po.totalAmount.toLocaleString()}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${po.status === 'Completed'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : po.status === 'Draft'
-                                ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
-                              }`}>
-                              {po.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setSelectedPo(po);
-                                  setShowPoPreviewModal(true);
-                                }}
-                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm animate-fade-in"
-                              >
-                                <Eye size={13} className="text-slate-450" />
-                                View
-                              </button>
-                              <button
-                                onClick={() => handleEditOrder(po)}
-                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-blue-600 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteOrder(po._id)}
-                                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-55 border border-slate-200 text-red-650 px-3.5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-sm"
-                              >
-                                Delete
-                              </button>
-                              <button
-                                onClick={() => downloadPO(po._id, po.poNumber)}
-                                disabled={downloadingPoId === po._id}
-                                className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
-                              >
-                                {downloadingPoId === po._id
-                                  ? <Loader2 size={13} className="animate-spin" />
-                                  : <FileText size={14} />}
-                                {downloadingPoId === po._id ? 'Generating...' : 'Download PDF'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+
 
           {/* TAB 3: Suppliers Registry */}
           {activeTab === 'vendors' && (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
                 <div>
-                  <h4 className="font-extrabold text-sm text-slate-800">Registered Suppliers</h4>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Standard vendor profiles and billing details</p>
+                  <h4 className="font-extrabold text-sm text-slate-800">Registered Vendors</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Vendor profiles and billing details</p>
                 </div>
                 <Building className="text-emerald-600" size={16} />
               </div>
@@ -1171,7 +1058,7 @@ const Purchases = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredVendors.length === 0 ? (
                   <div className="col-span-full text-center py-12 text-slate-400 font-medium">
-                    No corporate suppliers matching the selected filters.
+                    No vendors matching the selected filters.
                   </div>
                 ) : (
                   filteredVendors.map((ven) => (
@@ -1399,9 +1286,8 @@ const Purchases = () => {
         </div>
       )}
 
-      {/* ================= MODAL: ADD PURCHASE ORDER ================= */}
-      {showAddOrder && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+
+
           <form
             onSubmit={handlePOSubmit}
             className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-800 animate-scale-up"
@@ -1477,9 +1363,10 @@ const Purchases = () => {
                       <div className="md:col-span-2">
                         <input
                           type="number"
+                          step="any"
                           required
                           value={item.quantity}
-                          onChange={(e) => updatePoItem(index, 'quantity', Number(e.target.value))}
+                          onChange={(e) => updatePoItem(index, 'quantity', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                           placeholder="Qty"
                         />
@@ -1487,9 +1374,10 @@ const Purchases = () => {
                       <div className="md:col-span-2">
                         <input
                           type="number"
+                          step="any"
                           required
                           value={item.price}
-                          onChange={(e) => updatePoItem(index, 'price', Number(e.target.value))}
+                          onChange={(e) => updatePoItem(index, 'price', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                           placeholder="Price"
                         />
@@ -1497,8 +1385,9 @@ const Purchases = () => {
                       <div className="md:col-span-2 flex items-center justify-between gap-2">
                         <input
                           type="number"
+                          step="any"
                           value={item.taxRate}
-                          onChange={(e) => updatePoItem(index, 'taxRate', Number(e.target.value))}
+                          onChange={(e) => updatePoItem(index, 'taxRate', e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                           placeholder="GST %"
                         />
@@ -1579,18 +1468,29 @@ const Purchases = () => {
                     </select>
                   </div>
 
+
+
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Linked PO Reference (Optional)</label>
-                    <select
-                      value={entryForm.poRef}
-                      onChange={(e) => handlePoRefChange(e.target.value)}
-                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                    >
-                      <option value="">Direct Purchase (No PO Link)</option>
-                      {orders.filter(o => o.status !== 'Completed' || o._id === entryForm.poRef).map(po => (
-                        <option key={po._id} value={po._id}>{po.poNumber}</option>
-                      ))}
-                    </select>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Supplier Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={entryForm.supplierName}
+                      onChange={(e) => handleEntryFieldChange('supplierName', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      placeholder="e.g. OfficeHub Supplies"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-505 uppercase tracking-wider mb-1.5">Supplier GSTIN (Optional)</label>
+                    <input
+                      type="text"
+                      value={entryForm.supplierGSTIN}
+                      onChange={(e) => handleEntryFieldChange('supplierGSTIN', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      placeholder="e.g. 29GGSSS1234F1Z5"
+                    />
                   </div>
                 </div>
               </div>
@@ -1662,97 +1562,92 @@ const Purchases = () => {
                 <div className="space-y-3">
                   {entryForm.items.map((item, index) => (
                     <div key={index} className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3 relative">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                        <div className="md:col-span-5">
+                      <div className="grid grid-cols-1 md:grid-cols-13 gap-3" style={{gridTemplateColumns: '3fr 1.5fr 1fr 0.8fr 1.5fr 1fr'}}>
+                        <div>
                           <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Item Name</label>
                           <input
                             type="text"
                             required
                             value={item.name}
                             onChange={(e) => updateEntryItem(index, 'name', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
                             placeholder="e.g. Dell Latitude 7420 Laptop"
                           />
                         </div>
-                        <div className="md:col-span-2">
+                        <div>
                           <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Item Code</label>
                           <input
                             type="text"
-                            required
                             value={item.code}
                             onChange={(e) => updateEntryItem(index, 'code', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
                             placeholder="CODE-X"
                           />
                         </div>
-                        <div className="md:col-span-1.5 md:col-span-2">
+                        <div>
                           <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Qty</label>
                           <input
                             type="number"
+                            step="any"
                             required
                             value={item.quantity}
-                            onChange={(e) => updateEntryItem(index, 'quantity', Number(e.target.value))}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            onChange={(e) => updateEntryItem(index, 'quantity', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 text-center"
                           />
                         </div>
-                        <div className="md:col-span-1">
+                        <div>
                           <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Unit</label>
                           <input
                             type="text"
-                            required
                             value={item.unit}
                             onChange={(e) => updateEntryItem(index, 'unit', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
                             placeholder="Pcs"
                           />
                         </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Price/Unit</label>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Price / Unit</label>
                           <input
                             type="number"
+                            step="any"
                             required
                             value={item.price}
-                            onChange={(e) => updateEntryItem(index, 'price', Number(e.target.value))}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
+                            onChange={(e) => updateEntryItem(index, 'price', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Disc %</label>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            max="100"
+                            value={item.discountValue}
+                            onChange={(e) => updateEntryItem(index, 'discountValue', e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                            placeholder="0"
                           />
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-slate-200/60 items-center">
-                        <div className="md:col-span-3">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Discount Type</label>
-                          <select
-                            value={item.discountType}
-                            onChange={(e) => updateEntryItem(index, 'discountType', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-805 cursor-pointer"
-                          >
-                            <option value="percentage">Percentage (%)</option>
-                            <option value="amount">Fixed Amount</option>
-                          </select>
-                        </div>
-                        <div className="md:col-span-3">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Discount value</label>
-                          <input
-                            type="number"
-                            value={item.discountValue}
-                            onChange={(e) => updateEntryItem(index, 'discountValue', Number(e.target.value))}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-805"
-                          />
-                        </div>
-                        <div className="md:col-span-6 flex items-center justify-between gap-3 pt-4">
-                          <p className="text-[11px] font-semibold text-slate-500">
-                            Net Discount: <span className="font-extrabold text-red-600">₹{(item.discountAmount || 0).toLocaleString()}</span> • Total Item Amount: <span className="font-extrabold text-slate-800">₹{(item.totalItemAmount || 0).toLocaleString()}</span>
-                          </p>
-                          {entryForm.items.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeEntryItem(index)}
-                              className="text-red-500 hover:text-red-650 font-semibold cursor-pointer p-1"
-                            >
-                              Remove Line
-                            </button>
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+                        <div className="flex items-center gap-4 text-[11px] text-slate-500">
+                          {(item.discountAmount || 0) > 0 && (
+                            <span>Net Discount: <span className="font-extrabold text-red-500">-{currencySymbol}{(item.discountAmount || 0).toLocaleString()}</span></span>
                           )}
+                          <span>Total Item Amount: <span className="font-extrabold text-slate-800">{currencySymbol}{(item.totalItemAmount || 0).toLocaleString()}</span></span>
                         </div>
+                        {entryForm.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeEntryItem(index)}
+                            className="text-red-500 hover:text-red-650 font-semibold cursor-pointer p-1 text-xs"
+                          >
+                            Remove Line
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1769,6 +1664,7 @@ const Purchases = () => {
                       <label className="block text-[10px] text-slate-500 font-bold mb-1">Transportation Charges</label>
                       <input
                         type="number"
+                        step="any"
                         value={entryForm.transportationCharges}
                         onChange={(e) => handleEntryFieldChange('transportationCharges', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
@@ -1778,6 +1674,7 @@ const Purchases = () => {
                       <label className="block text-[10px] text-slate-500 font-bold mb-1">Packing Charges</label>
                       <input
                         type="number"
+                        step="any"
                         value={entryForm.packingCharges}
                         onChange={(e) => handleEntryFieldChange('packingCharges', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
@@ -1787,6 +1684,7 @@ const Purchases = () => {
                       <label className="block text-[10px] text-slate-500 font-bold mb-1">Loading/Unloading Charges</label>
                       <input
                         type="number"
+                        step="any"
                         value={entryForm.loadingUnloadingCharges}
                         onChange={(e) => handleEntryFieldChange('loadingUnloadingCharges', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
@@ -1796,6 +1694,7 @@ const Purchases = () => {
                       <label className="block text-[10px] text-slate-500 font-bold mb-1">Other Charges</label>
                       <input
                         type="number"
+                        step="any"
                         value={entryForm.otherCharges}
                         onChange={(e) => handleEntryFieldChange('otherCharges', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
@@ -1844,21 +1743,35 @@ const Purchases = () => {
                 </div>
               </div>
 
-              {/* SECTION F: Payment Information with status selector */}
+              {/* SECTION F: Payment Information */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">F. Payment Status & Mode Settings</h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-extrabold text-blue-600 uppercase tracking-wider">F. Payment Details</h4>
+                  {entryForm.paymentStatus && (
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                      entryForm.paymentStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      entryForm.paymentStatus === 'Partial' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      'bg-red-50 text-red-700 border-red-200'
+                    }`}>
+                      {entryForm.paymentStatus === 'Paid' ? '✓ Fully Paid' :
+                       entryForm.paymentStatus === 'Partial' ? '⚡ Partial Payment' :
+                       '⏳ Unpaid'}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Payment Status</label>
-                    <select
-                      value={entryForm.paymentStatus}
-                      onChange={(e) => handleEntryFieldChange('paymentStatus', e.target.value)}
-                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-slate-800 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
-                    >
-                      <option value="Unpaid">Unpaid (Full Due)</option>
-                      <option value="Partial">Partial Down-payment</option>
-                      <option value="Paid">Fully Paid Settlement</option>
-                    </select>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Amount Paid</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={entryForm.amountPaid}
+                      onChange={(e) => handleEntryFieldChange('amountPaid', e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:border-blue-500 font-bold text-slate-800"
+                      placeholder="0"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1">Enter amount paid — status updates automatically</p>
                   </div>
 
                   <div>
@@ -1874,17 +1787,6 @@ const Purchases = () => {
                       <option value="Cheque">Bank Cheque</option>
                       <option value="Credit">Credit Outstanding</option>
                     </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5">Paid Down Amount (₹)</label>
-                    <input
-                      type="number"
-                      disabled={entryForm.paymentStatus !== 'Partial'}
-                      value={entryForm.amountPaid}
-                      onChange={(e) => handleEntryFieldChange('amountPaid', e.target.value)}
-                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400 font-bold"
-                    />
                   </div>
 
                   <div>
@@ -1906,11 +1808,11 @@ const Purchases = () => {
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Financial Voucher Summary</h4>
                 </div>
                 <div className="flex flex-wrap gap-6 text-xs text-slate-300">
-                  <p>Subtotal: <span className="font-extrabold text-slate-100">₹{entryForm.subTotal.toLocaleString()}</span></p>
-                  <p>Discount: <span className="font-extrabold text-red-400">-₹{entryForm.totalDiscount.toLocaleString()}</span></p>
-                  <p>Charges: <span className="font-extrabold text-slate-100">+₹{entryForm.additionalChargesTotal.toLocaleString()}</span></p>
-                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Grand Total: <span className="text-emerald-400">₹{entryForm.grandTotal.toLocaleString()}</span></p>
-                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Dues Pending: <span className="text-red-400">₹{Number(entryForm.amountDue).toLocaleString()}</span></p>
+                  <p>Subtotal: <span className="font-extrabold text-slate-100">{currencySymbol}{(entryForm.subTotal || 0).toLocaleString()}</span></p>
+                  <p>Discount: <span className="font-extrabold text-red-400">-{currencySymbol}{(entryForm.totalDiscount || 0).toLocaleString()}</span></p>
+                  <p>Charges: <span className="font-extrabold text-slate-100">+{currencySymbol}{(entryForm.additionalChargesTotal || 0).toLocaleString()}</span></p>
+                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Grand Total: <span className="text-emerald-400">{currencySymbol}{(entryForm.grandTotal || 0).toLocaleString()}</span></p>
+                  <p className="border-l border-slate-800 pl-4 text-sm font-extrabold">Dues Pending: <span className="text-red-400">{currencySymbol}{(Number(entryForm.amountDue) || 0).toLocaleString()}</span></p>
                 </div>
               </div>
 
@@ -1985,8 +1887,8 @@ const Purchases = () => {
         </div>
       )}
 
-      {/* ================= MODAL: PURCHASE ORDER LIVE VIEWER ================= */}
-      {showPoPreviewModal && selectedPo && (() => {
+
+
         const activeCompany = selectedPo.companyId && typeof selectedPo.companyId === 'object'
           ? selectedPo.companyId
           : (companyProfiles.find(p => p._id === selectedPo.companyId) || companyProfiles[0] || {});
@@ -2028,17 +1930,17 @@ const Purchases = () => {
                   <div className="flex items-center gap-3">
                     {activeCompany.logoSquareUrl ? (
                       <div className="flex items-center gap-3">
-                        <img 
-                          src={activeCompany.logoSquareUrl.startsWith('data:') || activeCompany.logoSquareUrl.startsWith('http') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`} 
-                          alt="Company Logo" 
-                          className="w-20 h-20 object-contain" 
+                        <img
+                          src={activeCompany.logoSquareUrl.startsWith('data:') || activeCompany.logoSquareUrl.startsWith('http') ? activeCompany.logoSquareUrl : `http://localhost:5000${activeCompany.logoSquareUrl}`}
+                          alt="Company Logo"
+                          className="w-20 h-20 object-contain"
                           onError={(e) => { e.target.style.display = 'none'; }}
                         />
                         {activeCompany.logoUrl ? (
-                          <img 
-                            src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
-                            alt="Brand Logo" 
-                            className="h-20 object-contain" 
+                          <img
+                            src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`}
+                            alt="Brand Logo"
+                            className="h-20 object-contain"
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
@@ -2053,10 +1955,10 @@ const Purchases = () => {
                         )}
                       </div>
                     ) : activeCompany.logoUrl ? (
-                      <img 
-                        src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`} 
-                        alt="Brand Logo" 
-                        className="h-20 object-contain" 
+                      <img
+                        src={activeCompany.logoUrl.startsWith('data:') || activeCompany.logoUrl.startsWith('http') ? activeCompany.logoUrl : `http://localhost:5000${activeCompany.logoUrl}`}
+                        alt="Brand Logo"
+                        className="h-20 object-contain"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
@@ -2149,9 +2051,9 @@ const Purchases = () => {
                             <td className="border-r border-black p-2 text-center">{index + 1}</td>
                             <td className="border-r border-black p-2 text-left font-medium">{item.name}</td>
                             <td className="border-r border-black p-2 text-center">{qty}</td>
-                            <td className="border-r border-black p-2 text-right">₹{price.toLocaleString()}</td>
+                            <td className="border-r border-black p-2 text-right">{currencySymbol}{price.toLocaleString()}</td>
                             <td className="border-r border-black p-2 text-center">{taxRate}%</td>
-                            <td className="p-2 text-right font-semibold">₹{rowTotal.toLocaleString()}</td>
+                            <td className="p-2 text-right font-semibold">{currencySymbol}{rowTotal.toLocaleString()}</td>
                           </tr>
                         );
                       })}
@@ -2161,20 +2063,20 @@ const Purchases = () => {
                         <td colSpan="3" className="border-r border-black p-2 bg-[#fcfbf9]"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right font-bold uppercase select-none">Subtotal:</td>
                         <td className="p-2 text-right font-semibold">
-                          ₹{(selectedPo.totalAmount - (selectedPo.taxAmount || 0)).toLocaleString()}
+                          {currencySymbol}{(selectedPo.totalAmount - (selectedPo.taxAmount || 0)).toLocaleString()}
                         </td>
                       </tr>
                       <tr className="border-t border-slate-300 h-8 text-[9.5px]">
                         <td colSpan="3" className="border-r border-black p-2 bg-[#fcfbf9]"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right font-bold uppercase select-none">Tax (GST Amt):</td>
                         <td className="p-2 text-right font-semibold">
-                          ₹{(selectedPo.taxAmount || 0).toLocaleString()}
+                          {currencySymbol}{(selectedPo.taxAmount || 0).toLocaleString()}
                         </td>
                       </tr>
                       <tr className="bg-[#e8e5d3] font-bold border-t border-black h-8 text-black text-[10px]">
                         <td colSpan="3" className="border-r border-black p-2"></td>
                         <td colSpan="2" className="border-r border-black p-2 text-right uppercase tracking-wider select-none">Grand Total Cost:</td>
-                        <td className="p-2 text-right">₹{selectedPo.totalAmount.toLocaleString()}</td>
+                        <td className="p-2 text-right">{currencySymbol}{selectedPo.totalAmount.toLocaleString()}</td>
                       </tr>
                       {linkedEntry && (
                         <>
@@ -2182,13 +2084,13 @@ const Purchases = () => {
                             <td colSpan="3" className="border-r border-black p-2 bg-[#fcfbf9]"></td>
                             <td colSpan="2" className="border-r border-black p-2 text-right font-bold uppercase select-none text-emerald-700">Amount Paid ({linkedEntry.paymentMode || 'Cash'}):</td>
                             <td className="p-2 text-right font-semibold text-emerald-700">
-                              -₹{(linkedEntry.amountPaid || 0).toLocaleString()}
+                              -{currencySymbol}{(linkedEntry.amountPaid || 0).toLocaleString()}
                             </td>
                           </tr>
                           <tr className="bg-[#e8e5d3] font-bold border-t border-black h-8 text-black text-[10px]">
                             <td colSpan="3" className="border-r border-black p-2"></td>
                             <td colSpan="2" className="border-r border-black p-2 text-right uppercase tracking-wider select-none text-red-650">Outstanding Due:</td>
-                            <td className="p-2 text-right text-red-650">₹{(linkedEntry.amountDue || 0).toLocaleString()}</td>
+                            <td className="p-2 text-right text-red-650">{currencySymbol}{(linkedEntry.amountDue || 0).toLocaleString()}</td>
                           </tr>
                         </>
                       )}
@@ -2344,16 +2246,16 @@ const Purchases = () => {
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Total Bill Amt</p>
-                        <p className="font-black text-slate-900 text-sm mt-1">₹{(selectedEntry.grandTotal || selectedEntry.totalAmount || 0).toLocaleString()}</p>
+                        <p className="font-black text-slate-900 text-sm mt-1">{currencySymbol}{(selectedEntry.grandTotal || selectedEntry.totalAmount || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Paid amount</p>
-                        <p className="font-black text-emerald-600 text-sm mt-1">₹{(selectedEntry.amountPaid || 0).toLocaleString()}</p>
+                        <p className="font-black text-emerald-600 text-sm mt-1">{currencySymbol}{(selectedEntry.amountPaid || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Outstanding</p>
                         <p className={`font-black text-sm mt-1 ${selectedEntry.amountDue > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                          ₹{(selectedEntry.amountDue || 0).toLocaleString()}
+                          {currencySymbol}{(selectedEntry.amountDue || 0).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -2383,7 +2285,7 @@ const Purchases = () => {
                       {(selectedEntry.additionalChargesTotal > 0) && (
                         <div className="flex justify-between border-t border-slate-200 pt-2">
                           <span>Additional Charges total:</span>
-                          <span className="font-bold text-slate-805">₹{selectedEntry.additionalChargesTotal.toLocaleString()}</span>
+                          <span className="font-bold text-slate-805">{currencySymbol}{(selectedEntry.additionalChargesTotal || 0).toLocaleString()}</span>
                         </div>
                       )}
                     </div>
@@ -2393,20 +2295,20 @@ const Purchases = () => {
                   <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3 shadow-sm">
                     <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2">Acquired Assets Specifications</h4>
 
-                    <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm">
-                      <table className="w-full text-left border-collapse text-xs">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse border border-slate-200 text-xs">
                         <thead>
-                          <tr className="bg-slate-100 text-[10px] font-bold text-slate-500 border-b border-slate-200 uppercase tracking-wider">
-                            <th className="p-3">Asset Spec Name & Code</th>
-                            <th className="p-3 text-center">Qty & Unit</th>
-                            <th className="p-3 text-right">Unit Price</th>
-                            <th className="p-3 text-right">Total</th>
+                          <tr className="bg-slate-100 text-slate-600 uppercase text-[9px] font-bold tracking-wider border-b border-slate-200">
+                            <th className="p-3">Asset Description</th>
+                            <th className="p-3 text-center">Acquired Qty</th>
+                            <th className="p-3 text-right">Acquisition Unit cost</th>
+                            <th className="p-3 text-right">Net Value</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 text-slate-700 bg-white">
                           {(selectedEntry.items || []).map((item, index) => {
                             return (
-                              <tr key={index} className="hover:bg-slate-50">
+                              <tr key={index} className="hover:bg-slate-55">
                                 <td className="p-3 leading-tight">
                                   <p className="font-semibold text-slate-900">{item.name}</p>
                                   <p className="text-[9px] text-slate-450 font-mono mt-0.5">Code: {item.code || 'N/A'}</p>
@@ -2415,13 +2317,13 @@ const Purchases = () => {
                                   {item.quantity} {item.unit || 'Pcs'}
                                 </td>
                                 <td className="p-3 text-right font-bold text-slate-900">
-                                  <p>₹{item.price.toLocaleString()}</p>
+                                  <p>{currencySymbol}{(item.price || 0).toLocaleString()}</p>
                                   {item.discountValue > 0 && (
-                                    <p className="text-[9px] text-red-500 font-normal">Discount: -₹{item.discountAmount?.toLocaleString()}</p>
+                                    <p className="text-[9px] text-red-500 font-normal">Discount: -{currencySymbol}{(item.discountAmount || 0).toLocaleString()}</p>
                                   )}
                                 </td>
                                 <td className="p-3 text-right font-black text-slate-950">
-                                  ₹{item.totalItemAmount?.toLocaleString()}
+                                  {currencySymbol}{(item.totalItemAmount || 0).toLocaleString()}
                                 </td>
                               </tr>
                             );
@@ -2568,13 +2470,13 @@ const Purchases = () => {
                             <td className="p-3.5 font-bold text-blue-600">{item.voucherNo}</td>
                             <td className="p-3.5 text-slate-500 font-medium">{item.notes}</td>
                             <td className="p-3.5 text-right font-extrabold text-emerald-600">
-                              {item.debit > 0 ? `₹${item.debit.toLocaleString()}` : '—'}
+                              {item.debit > 0 ? `${currencySymbol}${item.debit.toLocaleString()}` : '—'}
                             </td>
                             <td className="p-3.5 text-right font-extrabold text-red-650">
-                              {item.credit > 0 ? `₹${item.credit.toLocaleString()}` : '—'}
+                              {item.credit > 0 ? `${currencySymbol}${item.credit.toLocaleString()}` : '—'}
                             </td>
                             <td className="p-3.5 text-right font-black text-slate-900 bg-slate-50">
-                              ₹{item.balance.toLocaleString()}
+                              {currencySymbol}{item.balance.toLocaleString()}
                             </td>
                           </tr>
                         ))
@@ -2586,7 +2488,7 @@ const Purchases = () => {
                 <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between text-xs">
                   <span className="text-slate-600 font-bold">CURRENT TOTAL OUTSTANDING LIABILITY</span>
                   <span className="text-sm font-black text-red-650">
-                    ₹{(ledgerData[ledgerData.length - 1]?.balance || 0).toLocaleString()}/-
+                    {currencySymbol}{(ledgerData[ledgerData.length - 1]?.balance || 0).toLocaleString()}/-
                   </span>
                 </div>
               </div>

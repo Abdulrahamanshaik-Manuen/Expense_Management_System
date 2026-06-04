@@ -78,7 +78,7 @@ const Analytics = () => {
   const activeCompanyId = localStorage.getItem('selectedCompanyId');
   const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
   const activeCurrency = activeCompany?.currency || 'INR';
-  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   const filteredRawInvoices = React.useMemo(() => {
     return rawInvoices.filter(inv => !activeCompanyId || (inv.companyId?._id || inv.companyId) === activeCompanyId);

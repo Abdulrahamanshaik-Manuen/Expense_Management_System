@@ -1,19 +1,71 @@
 import PurchaseEntry from '../models/PurchaseEntry.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Vendor from '../models/Vendor.js';
+import CompanySetting from '../models/CompanySetting.js';
 import { postPurchaseEntry, reversePurchaseEntry } from '../utils/accounting.js';
 import { generatePurchaseVoucherBuffer } from '../utils/generateInvoice.js';
 
+const getCompanyPrefix = (name) => {
+  if (!name) return 'MIT';
+  const upperName = name.toUpperCase().trim();
+  if (upperName.includes('MANUEN INFOTECH')) {
+    return 'MIT';
+  }
+  const words = upperName.split(/\s+/).filter(Boolean);
+  if (words.length >= 3) {
+    return words.slice(0, 3).map(w => w[0]).join('');
+  } else if (words.length === 2) {
+    const w1 = words[0];
+    const w2 = words[1];
+    if (w2.startsWith('INFO') && w2.length > 4) {
+      return w1[0] + 'IT';
+    }
+    return w1[0] + w2[0];
+  } else {
+    return upperName.slice(0, 3);
+  }
+};
+
 // Helper to generate chronological, sequential purchase voucher numbers
-const generateVoucherNumber = async () => {
+const generateVoucherNumber = async (companyId) => {
   const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const prefix = `PV-${todayStr}`;
-  // Count matching prefixes today
+  
+  let companyPrefix = 'MIT';
+  if (companyId) {
+    const company = await CompanySetting.findById(companyId);
+    if (company && company.companyName) {
+      companyPrefix = getCompanyPrefix(company.companyName);
+    }
+  } else {
+    const defaultCompany = await CompanySetting.findOne();
+    if (defaultCompany && defaultCompany.companyName) {
+      companyPrefix = getCompanyPrefix(defaultCompany.companyName);
+    }
+  }
+
+  const prefix = `${companyPrefix}-PV${todayStr}`;
   const count = await PurchaseEntry.countDocuments({
     purchaseVoucherNumber: new RegExp(`^${prefix}`),
   });
-  const sequentialNum = String(count + 1).padStart(3, '0');
-  return `${prefix}-${sequentialNum}`;
+
+  // Find highest serial number to avoid duplicate generation if previous entries were deleted
+  let nextNum = count + 1;
+  const lastEntry = await PurchaseEntry.findOne({
+    purchaseVoucherNumber: new RegExp(`^${prefix}`),
+  }).sort({ purchaseVoucherNumber: -1 });
+
+  if (lastEntry && lastEntry.purchaseVoucherNumber) {
+    const match = lastEntry.purchaseVoucherNumber.match(/\d+$/);
+    if (match) {
+      const lastSerial = parseInt(match[0], 10);
+      if (!isNaN(lastSerial) && lastSerial >= nextNum) {
+        nextNum = lastSerial + 1;
+      }
+    }
+  }
+
+  const sequentialNum = String(nextNum).padStart(3, '0');
+  return `${prefix}${sequentialNum}`;
 };
 
 // @desc    Create a new Purchase Entry (Procurement Voucher with full ledgers)
@@ -44,14 +96,14 @@ export const createPurchaseEntry = async (req, res) => {
       notes,
       items,
       companyId,
+      supplierName,
+      supplierGSTIN,
     } = req.body;
 
     let invoiceUrl = '';
     if (req.file) {
       const base64Data = req.file.buffer.toString('base64');
       invoiceUrl = `data:${req.file.mimetype};base64,${base64Data}`;
-    } else {
-      return res.status(400).json({ message: 'Please upload a supporting supplier invoice document.' });
     }
 
     // Parse items if passed as stringified JSON (usually standard for multipart form-data)
@@ -66,7 +118,7 @@ export const createPurchaseEntry = async (req, res) => {
       return res.status(404).json({ message: 'Supplier/Vendor not found.' });
     }
 
-    const purchaseVoucherNumber = await generateVoucherNumber();
+    const purchaseVoucherNumber = await generateVoucherNumber(companyId);
 
     const entry = new PurchaseEntry({
       poRef: poRef || null,
@@ -77,8 +129,8 @@ export const createPurchaseEntry = async (req, res) => {
       invoiceDate: invoiceDate || new Date(),
       dueDate: dueDate || null,
       // Supplier Snapshot
-      supplierName: vendorDoc.name,
-      supplierGSTIN: vendorDoc.gstNumber || '',
+      supplierName: supplierName || vendorDoc.name,
+      supplierGSTIN: supplierGSTIN !== undefined ? supplierGSTIN : (vendorDoc.gstNumber || ''),
       supplierMobileNumber: vendorDoc.phone || '',
       supplierEmail: vendorDoc.email || '',
       supplierAddress: vendorDoc.address || '',
@@ -133,7 +185,7 @@ export const getPurchaseEntries = async (req, res) => {
       .populate('poRef', 'poNumber')
       .populate('addedBy', 'name email')
       .populate('companyId')
-      .sort({ createdAt: -1 });
+      .sort({ purchaseDate: -1, createdAt: -1 });
 
     // Normalise legacy objects so front-end parses cleanly without crashes
     const entries = rawEntries.map((entry) => {
@@ -176,6 +228,8 @@ export const updatePurchaseEntry = async (req, res) => {
     // 1. Perform reversal of ledger entries based on old purchase entry state
     await reversePurchaseEntry(entry);
 
+    const oldPoRef = entry.poRef;
+
     const {
       poRef,
       vendor,
@@ -199,6 +253,8 @@ export const updatePurchaseEntry = async (req, res) => {
       notes,
       items,
       companyId,
+      supplierName,
+      supplierGSTIN,
     } = req.body;
 
     let invoiceUrl = entry.invoiceUrl;
@@ -225,14 +281,14 @@ export const updatePurchaseEntry = async (req, res) => {
     entry.invoiceDate = invoiceDate || entry.invoiceDate;
     entry.purchaseDate = purchaseDate || entry.purchaseDate;
     entry.dueDate = dueDate || null;
-    
+
     // Update snapshot
-    entry.supplierName = vendorDoc.name;
-    entry.supplierGSTIN = vendorDoc.gstNumber || '';
+    entry.supplierName = supplierName || vendorDoc.name;
+    entry.supplierGSTIN = supplierGSTIN !== undefined ? supplierGSTIN : (vendorDoc.gstNumber || '');
     entry.supplierMobileNumber = vendorDoc.phone || '';
     entry.supplierEmail = vendorDoc.email || '';
     entry.supplierAddress = vendorDoc.address || '';
-    
+
     // Items & Financials
     entry.items = parsedItems;
     entry.transportationCharges = Number(transportationCharges || 0);
@@ -244,14 +300,14 @@ export const updatePurchaseEntry = async (req, res) => {
     entry.additionalChargesTotal = Number(additionalChargesTotal || 0);
     entry.grandTotal = Number(grandTotal);
     entry.totalAmount = Number(grandTotal); // legacy compatibility
-    
+
     // Payments
     entry.paymentStatus = paymentStatus || 'Unpaid';
     entry.paymentMode = paymentMode || 'Cash';
     entry.amountPaid = Number(amountPaid || 0);
     entry.amountDue = Number(amountDue);
     entry.paymentReferenceNumber = paymentReferenceNumber || '';
-    
+
     entry.notes = notes || '';
     entry.invoiceUrl = invoiceUrl;
     if (companyId) entry.companyId = companyId;
@@ -259,6 +315,16 @@ export const updatePurchaseEntry = async (req, res) => {
     // Save and re-post updated entries
     const updatedEntry = await entry.save();
     await postPurchaseEntry(updatedEntry);
+
+    // Update PO statuses if poRef changed
+    if (String(oldPoRef || '') !== String(poRef || '')) {
+      if (oldPoRef) {
+        await PurchaseOrder.findByIdAndUpdate(oldPoRef, { status: 'Sent' });
+      }
+      if (poRef) {
+        await PurchaseOrder.findByIdAndUpdate(poRef, { status: 'Completed' });
+      }
+    }
 
     res.json(updatedEntry);
   } catch (error) {
@@ -278,6 +344,10 @@ export const deletePurchaseEntry = async (req, res) => {
 
     // 1. Perform reversal rollback of all accounting postings
     await reversePurchaseEntry(entry);
+
+    if (entry.poRef) {
+      await PurchaseOrder.findByIdAndUpdate(entry.poRef, { status: 'Sent' });
+    }
 
     // 2. Delete the record
     await PurchaseEntry.findByIdAndDelete(req.params.id);
@@ -304,7 +374,7 @@ export const updatePurchaseEntryPayment = async (req, res) => {
     await reversePurchaseEntry(entry);
 
     const additionalPayment = Number(newPayment || 0);
-    
+
     // Support either absolute status adjustment or incremental payments
     if (paymentStatus) {
       entry.paymentStatus = paymentStatus;

@@ -14,6 +14,25 @@ export const createExpense = async (req, res) => {
       receiptUrl = `data:${req.file.mimetype};base64,${base64Data}`;
     }
 
+    const expenseDate = date ? new Date(date) : new Date();
+    const year = expenseDate.getFullYear();
+    const month = expenseDate.getMonth();
+    const day = expenseDate.getDate();
+
+    const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
+    const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+
+    const count = await Expense.countDocuments({
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
+    });
+
+    const serial = String(count + 1).padStart(3, '0');
+    const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+    const voucherNo = `EXP${dateStr}${serial}`;
+
     const expense = new Expense({
       title,
       amount: Number(amount),
@@ -26,6 +45,7 @@ export const createExpense = async (req, res) => {
       paymentStatus: paymentStatus || 'Pending',
       addedBy: req.user._id,
       companyId: companyId || '6a0d837fd7ace7063e6a8379',
+      voucherNo,
     });
 
     const createdExpense = await expense.save();
@@ -46,9 +66,43 @@ export const createExpense = async (req, res) => {
 // @access  Private
 export const getExpenses = async (req, res) => {
   try {
+    // Migration: populate voucherNo for legacy expenses
+    const legacyExpenses = await Expense.find({
+      $or: [
+        { voucherNo: { $exists: false } },
+        { voucherNo: '' },
+        { voucherNo: null }
+      ]
+    }).sort({ date: 1, createdAt: 1 });
+
+    for (const exp of legacyExpenses) {
+      const expenseDate = new Date(exp.date);
+      const year = expenseDate.getFullYear();
+      const month = expenseDate.getMonth();
+      const day = expenseDate.getDate();
+
+      const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
+      const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+
+      const count = await Expense.countDocuments({
+        date: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        },
+        _id: { $ne: exp._id },
+        voucherNo: { $exists: true, $ne: '' }
+      });
+
+      const serial = String(count + 1).padStart(3, '0');
+      const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+      exp.voucherNo = `EXP${dateStr}${serial}`;
+      await exp.save();
+    }
+
     let query = {};
 
     const expenses = await Expense.find(query)
+      .sort({ date: -1, createdAt: -1 })
       .populate('addedBy', 'name email')
       .populate('category', 'name description')
       .populate('companyId');
@@ -147,12 +201,67 @@ export const updateExpense = async (req, res) => {
     if (title !== undefined) expense.title = title;
     if (amount !== undefined) expense.amount = Number(amount);
     if (category !== undefined) expense.category = category;
-    if (date !== undefined) expense.date = date;
+    
+    if (date !== undefined) {
+      const oldDate = new Date(expense.date).toISOString().split('T')[0];
+      const newDate = new Date(date).toISOString().split('T')[0];
+      
+      if (oldDate !== newDate) {
+        expense.date = date;
+        
+        // Recalculate voucherNo
+        const expenseDate = new Date(date);
+        const year = expenseDate.getFullYear();
+        const month = expenseDate.getMonth();
+        const day = expenseDate.getDate();
+
+        const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
+        const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+
+        const count = await Expense.countDocuments({
+          date: {
+            $gte: startOfDay,
+            $lte: endOfDay
+          },
+          _id: { $ne: expense._id }
+        });
+
+        const serial = String(count + 1).padStart(3, '0');
+        const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+        expense.voucherNo = `EXP${dateStr}${serial}`;
+      } else {
+        expense.date = date;
+      }
+    }
+    
     if (paymentMethod !== undefined) expense.paymentMethod = paymentMethod;
     if (paidTo !== undefined) expense.paidTo = paidTo;
     if (notes !== undefined) expense.notes = notes;
     if (paymentStatus !== undefined) expense.paymentStatus = paymentStatus;
     if (companyId !== undefined) expense.companyId = companyId;
+
+    if (!expense.voucherNo) {
+      const expenseDate = new Date(expense.date);
+      const year = expenseDate.getFullYear();
+      const month = expenseDate.getMonth();
+      const day = expenseDate.getDate();
+
+      const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
+      const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+
+      const count = await Expense.countDocuments({
+        date: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        },
+        _id: { $ne: expense._id },
+        voucherNo: { $exists: true, $ne: '' }
+      });
+
+      const serial = String(count + 1).padStart(3, '0');
+      const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+      expense.voucherNo = `EXP${dateStr}${serial}`;
+    }
 
     if (req.file) {
       const base64Data = req.file.buffer.toString('base64');
@@ -186,7 +295,7 @@ export const downloadExpenseVoucher = async (req, res) => {
     }
 
     const pdfBuffer = await generateExpenseVoucherBuffer(expense);
-    const ref = `EXP-${expense._id.toString().slice(-6).toUpperCase()}`;
+    const ref = expense.voucherNo || `EXP-${expense._id.toString().slice(-6).toUpperCase()}`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=Expense_Voucher_${ref}.pdf`);

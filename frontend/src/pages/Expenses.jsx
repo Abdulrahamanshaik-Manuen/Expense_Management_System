@@ -18,8 +18,7 @@ import {
 
 /** Indian/Western Currency Number-to-Words */
 function priceToWords(price, currency = 'INR') {
-  const isUSD = currency === 'USD';
-  const unitName = isUSD ? 'Dollars' : 'Rupees';
+  const unitName = 'Rupees';
 
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
@@ -27,18 +26,6 @@ function priceToWords(price, currency = 'INR') {
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
   if (num === 0) return `Zero ${unitName} only`;
-
-  if (isUSD) {
-    function toWordsUSD(n) {
-      if (n < 20) return a[n];
-      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
-      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
-      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
-      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
-      return 'Overflow';
-    }
-    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
-  }
 
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -67,7 +54,7 @@ const Expenses = () => {
   const activeCompanyId = localStorage.getItem('selectedCompanyId');
   const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
   const activeCurrency = activeCompany?.currency || 'INR';
-  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   const filteredExpenses = expenses.filter(exp => {
     const matchCompany = !activeCompanyId || (exp.companyId?._id || exp.companyId) === activeCompanyId;
@@ -532,7 +519,7 @@ const Expenses = () => {
                             </button>
                             <button
                               disabled={downloadingExpId === exp._id}
-                              onClick={() => downloadExpenseVoucher(exp._id, `EXP-${exp._id.slice(-6).toUpperCase()}`)}
+                              onClick={() => downloadExpenseVoucher(exp._id, exp.voucherNo || `EXP-${exp._id.slice(-6).toUpperCase()}`)}
                               className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
                             >
                               {downloadingExpId === exp._id ? (
@@ -704,7 +691,7 @@ const Expenses = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cost ({currencySymbol})</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cost</label>
                   <input
                     type="number"
                     name="amount"
@@ -992,10 +979,10 @@ const Expenses = () => {
                     )}
                   </div>
 
-                  {/* Voucher ID and Date Box */}
-                  <div className="border border-black px-3.5 py-1.5 w-48 text-[9px] font-bold text-black flex flex-col justify-center gap-1 bg-white select-none">
+                  {/* Voucher ID and Date (No Box) */}
+                  <div className="text-[10px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
                     <div>Date : {new Date(selectedExpense.date).toLocaleDateString('en-GB')}</div>
-                    <div className="border-t border-slate-200 pt-1">Voucher No : EXP-{selectedExpense._id.substr(-6).toUpperCase()}</div>
+                    <div>Voucher No : {selectedExpense.voucherNo || ('EXP-' + selectedExpense._id.substr(-6).toUpperCase())}</div>
                   </div>
                 </div>
 
@@ -1034,12 +1021,12 @@ const Expenses = () => {
                         <td className="border-r border-black p-2 text-left font-medium">
                           {selectedExpense.title} <span className="text-slate-500 font-normal">[{selectedExpense.category?.name || 'Category'}]</span>
                         </td>
-                        <td className="p-2 text-right font-semibold">${selectedExpense.amount.toFixed(2)}</td>
+                        <td className="p-2 text-right font-semibold">{currencySymbol}{selectedExpense.amount.toFixed(2)}</td>
                       </tr>
                       <tr className="bg-[#e8e5d3] font-bold border-t border-black h-8 text-black">
                         <td className="border-r border-black p-2"></td>
                         <td className="border-r border-black p-2 text-right uppercase tracking-wider select-none">Grand Total Payout:</td>
-                        <td className="p-2 text-right">${selectedExpense.amount.toFixed(2)}</td>
+                        <td className="p-2 text-right">{currencySymbol}{selectedExpense.amount.toFixed(2)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1093,7 +1080,7 @@ const Expenses = () => {
               <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
                 <button
                   disabled={downloadingExpId === selectedExpense._id}
-                  onClick={() => downloadExpenseVoucher(selectedExpense._id, `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`)}
+                  onClick={() => downloadExpenseVoucher(selectedExpense._id, selectedExpense.voucherNo || `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`)}
                   className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
                 >
                   {downloadingExpId === selectedExpense._id ? (

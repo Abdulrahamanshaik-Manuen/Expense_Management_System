@@ -323,7 +323,7 @@ const Company = () => {
     }
   };
 
-  const currencySymbol = selectedProfile?.currency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   return (
     <div className="flex-1 bg-slate-50 p-8 text-slate-800 overflow-y-auto max-h-[calc(100vh-80px)]">

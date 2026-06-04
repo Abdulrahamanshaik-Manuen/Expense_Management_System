@@ -107,3 +107,5 @@ export async function capturePreviewAsPDF(element, filename = 'document', onStar
     if (onEnd) onEnd();
   }
 }
+
+

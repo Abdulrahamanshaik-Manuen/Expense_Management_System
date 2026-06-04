@@ -31,8 +31,7 @@ import {
 
 /** Indian/Western Currency Number-to-Words */
 function priceToWords(price, currency = 'INR') {
-  const isUSD = currency === 'USD';
-  const unitName = isUSD ? 'Dollars' : 'Rupees';
+  const unitName = 'Rupees';
 
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ',
     'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ',
@@ -40,18 +39,6 @@ function priceToWords(price, currency = 'INR') {
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   let num = Math.floor(price);
   if (num === 0) return `Zero ${unitName} only`;
-
-  if (isUSD) {
-    function toWordsUSD(n) {
-      if (n < 20) return a[n];
-      if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10];
-      if (n < 1000) return a[Math.floor(n / 100)] + 'Hundred ' + toWordsUSD(n % 100);
-      if (n < 1000000) return toWordsUSD(Math.floor(n / 1000)) + 'Thousand ' + toWordsUSD(n % 1000);
-      if (n < 1000000000) return toWordsUSD(Math.floor(n / 1000000)) + 'Million ' + toWordsUSD(n % 1000000);
-      return 'Overflow';
-    }
-    return (toWordsUSD(num) + ' ' + unitName + ' only').replace(/\s+/g, ' ').trim();
-  }
 
   if ((num = num.toString()).length > 9) return 'Overflow';
   const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -114,7 +101,7 @@ const Reports = () => {
   const activeCompanyId = localStorage.getItem('selectedCompanyId');
   const activeCompany = companyProfiles.find(p => p._id === activeCompanyId) || companyProfiles[0];
   const activeCurrency = activeCompany?.currency || 'INR';
-  const currencySymbol = activeCurrency === 'USD' ? '$' : '₹';
+  const currencySymbol = '';
 
   const fetchData = async () => {
     try {
@@ -572,7 +559,7 @@ const Reports = () => {
                                 </button>
                                 <button
                                   disabled={downloadingExpId === exp._id}
-                                  onClick={() => downloadExpenseVoucher(exp._id, `EXP-${exp._id.slice(-6).toUpperCase()}`)}
+                                  onClick={() => downloadExpenseVoucher(exp._id, exp.voucherNo || `EXP-${exp._id.slice(-6).toUpperCase()}`)}
                                   className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-500 font-bold disabled:opacity-50 cursor-pointer bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50"
                                 >
                                   {downloadingExpId === exp._id ? (
@@ -1224,9 +1211,10 @@ const Reports = () => {
                       <h2 className="text-[17px] font-black text-[#002e6e] uppercase tracking-tight">{activeCompany.companyName}</h2>
                     )}
                   </div>
-                  <div className="border border-black px-3.5 py-2 w-44 text-[10px] font-bold text-black flex flex-col justify-center divide-y divide-black gap-1.5 bg-white select-none">
-                    <div className="pb-1">Voucher Date : {new Date(selectedExpense.date).toLocaleDateString('en-GB')}</div>
-                    <div className="pt-1">Payment Status: {selectedExpense.paymentStatus}</div>
+                  {/* Voucher Date & Payment Status (No Box) */}
+                  <div className="text-[10px] font-bold text-black flex flex-col justify-center gap-1 bg-transparent select-none text-right">
+                    <div>Voucher Date : {new Date(selectedExpense.date).toLocaleDateString('en-GB')}</div>
+                    <div>Payment Status: {selectedExpense.paymentStatus}</div>
                   </div>
                 </div>
 
@@ -1297,7 +1285,7 @@ const Reports = () => {
                   disabled={capturingExpPDF}
                   onClick={() => capturePreviewAsPDF(
                     expensePreviewRef.current,
-                    `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`,
+                    selectedExpense.voucherNo || `EXP-${selectedExpense._id.slice(-6).toUpperCase()}`,
                     () => setCapturingExpPDF(true),
                     () => setCapturingExpPDF(false)
                   )}
@@ -1435,7 +1423,7 @@ const Reports = () => {
                           <p className="text-[8.5px] text-slate-500 font-mono">Code: {item.code || 'N/A'}</p>
                         </td>
                         <td className="border-r border-black p-2 text-center">{item.quantity} {item.unit || 'Pcs'}</td>
-                        <td className="border-r border-black p-2 text-right">₹{(item.discountAmount || 0).toLocaleString()}/-</td>
+                        <td className="border-r border-black p-2 text-right">{currencySymbol}{(item.discountAmount || 0).toLocaleString()}/-</td>
                         <td className="p-2 text-right font-semibold">{currencySymbol}{(item.totalItemAmount || 0).toLocaleString()}/-</td>
                       </tr>
                     ))}

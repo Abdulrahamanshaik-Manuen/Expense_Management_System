@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const currencySymbol = '';
   const userString = localStorage.getItem('user');
   const currentUser = userString ? JSON.parse(userString) : { name: 'User', role: 'admin' };
   const isAdmin = true; // All users are admins in this unified setup
@@ -308,7 +309,7 @@ const Dashboard = () => {
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-blue-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Sales</span>
-            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 animate-pulse">
+            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
               <TrendingUp size={16} />
             </div>
           </div>
@@ -316,14 +317,14 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
             ) : (
-              `₹${stats.totalSales.toLocaleString()}`
+              `${currencySymbol}${stats.totalSales.toLocaleString()}`
             )}
           </h3>
           <div className="text-[11px] text-emerald-600 mt-1 font-semibold">
             {loading ? (
               <div className="h-3.5 w-16 bg-slate-100 rounded animate-pulse mt-1" />
             ) : (
-              `+₹${stats.salesPaid.toLocaleString()} collected`
+              `+${currencySymbol}${stats.salesPaid.toLocaleString()} collected`
             )}
           </div>
         </div>
@@ -340,14 +341,14 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
             ) : (
-              `₹${stats.expensesPaid.toLocaleString()}`
+              `${currencySymbol}${stats.expensesPaid.toLocaleString()}`
             )}
           </h3>
           <div className="text-[11px] text-amber-600 mt-1 font-semibold">
             {loading ? (
               <div className="h-3.5 w-16 bg-slate-100 rounded animate-pulse mt-1" />
             ) : (
-              `₹${stats.expensesPending.toLocaleString()} pending`
+              `${currencySymbol}${stats.expensesPending.toLocaleString()} pending`
             )}
           </div>
         </div>
@@ -364,7 +365,7 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
             ) : (
-              `₹${stats.salesDue.toLocaleString()}`
+              `${currencySymbol}${stats.salesDue.toLocaleString()}`
             )}
           </h3>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -380,7 +381,7 @@ const Dashboard = () => {
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-5 relative overflow-hidden hover:border-red-500/30 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payables</span>
-            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
+            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-650">
               <AlertTriangle size={16} />
             </div>
           </div>
@@ -388,7 +389,7 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
             ) : (
-              `₹${stats.purchasePending.toLocaleString()}`
+              `${currencySymbol}${stats.purchasePending.toLocaleString()}`
             )}
           </h3>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -405,7 +406,7 @@ const Dashboard = () => {
           stats.netProfit >= 0 ? 'hover:border-emerald-500/30' : 'hover:border-red-500/30'
         }`}>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Net Profit</span>
+            <span className="text-[10px] font-bold text-slate-555 uppercase tracking-wider">Net Profit</span>
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
               stats.netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
             }`}>
@@ -418,7 +419,7 @@ const Dashboard = () => {
             {loading ? (
               <div className="h-6 w-24 bg-slate-100 rounded animate-pulse my-0.5" />
             ) : (
-              `${stats.netProfit >= 0 ? '+' : ''}₹${stats.netProfit.toLocaleString()}`
+              `${stats.netProfit >= 0 ? '+' : ''}${currencySymbol}${stats.netProfit.toLocaleString()}`
             )}
           </h3>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -608,7 +609,7 @@ const Dashboard = () => {
                       </span>
                     </td>
                     <td className="py-3.5 px-4 font-black text-slate-900">
-                      ₹{tx.amount.toLocaleString()}
+                      {currencySymbol}{tx.amount.toLocaleString()}
                     </td>
                     <td className="py-3.5 pl-4 text-right">
                       <button

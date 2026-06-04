@@ -32,7 +32,8 @@ export const getPurchaseRequests = async (req, res) => {
 
     const requests = await PurchaseRequest.find(query)
       .populate('requestedBy', 'name email')
-      .populate('approvedBy', 'name email');
+      .populate('approvedBy', 'name email')
+      .sort({ createdAt: -1 });
       
     res.json(requests);
   } catch (error) {

@@ -52,6 +52,9 @@ const expenseSchema = new mongoose.Schema(
       ref: 'CompanySetting',
       default: '6a0d837fd7ace7063e6a8379',
     },
+    voucherNo: {
+      type: String,
+    },
   },
   {
     timestamps: true,

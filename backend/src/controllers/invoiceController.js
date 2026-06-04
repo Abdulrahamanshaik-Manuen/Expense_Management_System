@@ -150,7 +150,7 @@ export const createInvoice = asyncHandler(async (req, res) => {
 // @route   GET /api/invoices
 // @access  Private
 export const getInvoices = asyncHandler(async (req, res) => {
-  const invoices = await SaleInvoice.find({}).sort({ createdAt: -1 }).populate('createdBy', 'name email').populate('companyId');
+  const invoices = await SaleInvoice.find({}).sort({ invoiceDate: -1, createdAt: -1 }).populate('createdBy', 'name email').populate('companyId');
   
   res.json(invoices);
 });
