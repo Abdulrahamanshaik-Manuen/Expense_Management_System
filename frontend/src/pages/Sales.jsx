@@ -10,7 +10,6 @@ import {
   CreditCard,
   User,
   ShoppingBag,
-  Briefcase,
   AlertTriangle,
   Loader2,
   Download,
@@ -758,28 +757,6 @@ const Sales = () => {
 
             {/* Scrollable Form Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
-              
-              {/* Billing Company Selector */}
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5">
-                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <Briefcase size={12} className="text-blue-500" /> Billing Company Setting Profile
-                </h4>
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-650 mb-1">Select Billing Profile</label>
-                  <select
-                    value={invoiceForm.companyId}
-                    onChange={(e) => setInvoiceForm({ ...invoiceForm, companyId: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer h-9"
-                  >
-                    {companyProfiles.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.companyName} ({p.gstNumber})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               {/* Client Inline Info Section */}
               <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
                 <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">

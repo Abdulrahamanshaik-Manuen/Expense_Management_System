@@ -70,17 +70,27 @@ export const applyTheme = (themeName, accentColor) => {
     root.style.setProperty('--color-white', '#111827');    // Dark card background
     
     // Borders & dividers
-    root.style.setProperty('--color-slate-100', '#1f2937');
-    root.style.setProperty('--color-slate-200', '#374151');
+    root.style.setProperty('--color-slate-100', '#1e293b');
+    root.style.setProperty('--color-slate-200', '#334155');
+    root.style.setProperty('--color-slate-205', '#334155');
+    root.style.setProperty('--color-slate-300', '#475569');
     root.style.setProperty('--color-slate-350', '#4b5563');
     
-    // Main texts
+    // Main texts & custom shades
+    root.style.setProperty('--color-slate-955', '#0f172a'); // Overlay background
+    root.style.setProperty('--color-slate-950', '#ffffff'); 
     root.style.setProperty('--color-slate-900', '#f8fafc'); // Pure white headings
+    root.style.setProperty('--color-slate-850', '#f1f5f9');
+    root.style.setProperty('--color-slate-805', '#e2e8f0');
     root.style.setProperty('--color-slate-800', '#e2e8f0'); // Off-white body
     root.style.setProperty('--color-slate-700', '#cbd5e1'); // Light gray details
     root.style.setProperty('--color-slate-650', '#94a3b8'); // Muted text
-    root.style.setProperty('--color-slate-550', '#64748b'); // Subtle text
-    root.style.setProperty('--color-slate-500', '#64748b');
+    root.style.setProperty('--color-slate-600', '#cbd5e1'); // Gray details
+    root.style.setProperty('--color-slate-550', '#94a3b8');
+    root.style.setProperty('--color-slate-505', '#94a3b8');
+    root.style.setProperty('--color-slate-500', '#94a3b8'); // Subtle details
+    root.style.setProperty('--color-slate-450', '#64748b'); // Muted text
+    root.style.setProperty('--color-slate-400', '#64748b');
   } else {
     root.classList.remove('dark');
     
@@ -89,13 +99,25 @@ export const applyTheme = (themeName, accentColor) => {
     root.style.removeProperty('--color-white');
     root.style.removeProperty('--color-slate-100');
     root.style.removeProperty('--color-slate-200');
+    root.style.removeProperty('--color-slate-300');
     root.style.removeProperty('--color-slate-350');
+    root.style.removeProperty('--color-slate-950');
     root.style.removeProperty('--color-slate-900');
     root.style.removeProperty('--color-slate-800');
     root.style.removeProperty('--color-slate-700');
-    root.style.removeProperty('--color-slate-650');
-    root.style.removeProperty('--color-slate-550');
+    root.style.removeProperty('--color-slate-600');
     root.style.removeProperty('--color-slate-500');
+    root.style.removeProperty('--color-slate-400');
+
+    // Define custom color shades in light mode
+    root.style.setProperty('--color-slate-955', '#020617'); // slate-950
+    root.style.setProperty('--color-slate-850', '#1e293b'); // slate-800
+    root.style.setProperty('--color-slate-805', '#1e293b'); // slate-800
+    root.style.setProperty('--color-slate-650', '#475569'); // slate-600
+    root.style.setProperty('--color-slate-550', '#64748b'); // slate-500
+    root.style.setProperty('--color-slate-505', '#64748b'); // slate-500
+    root.style.setProperty('--color-slate-450', '#94a3b8'); // slate-400
+    root.style.setProperty('--color-slate-205', '#cbd5e1'); // slate-300
   }
 
   // Save selection
