@@ -5,6 +5,7 @@ import {
   DollarSign,
   ShoppingBag,
   FileSpreadsheet,
+  FileText,
   Layers,
   Users,
   ShieldCheck,
@@ -22,6 +23,7 @@ const Sidebar = () => {
     { name: 'Expenses', path: '/expenses', icon: <DollarSign size={20} /> },
     { name: 'Purchases', path: '/purchases', icon: <ShoppingBag size={20} /> },
     { name: 'Sales', path: '/sales', icon: <FileSpreadsheet size={20} /> },
+    { name: 'Quotations', path: '/quotations', icon: <FileText size={20} /> },
     { name: 'Reports', path: '/reports', icon: <Layers size={20} /> },
   ];
 

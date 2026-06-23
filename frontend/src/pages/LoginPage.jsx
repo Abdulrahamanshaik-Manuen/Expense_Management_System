@@ -64,7 +64,7 @@ const LoginPage = () => {
 
         {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-blue-500/30 mb-4 animate-bounce">
+          <div className="w-14 h-14 bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-blue-500/30 mb-4">
             E
           </div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-1.5">

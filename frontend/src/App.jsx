@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
+import Quotation from './pages/Quotation';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
@@ -51,6 +52,7 @@ function App() {
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/sales" element={<Sales />} />
+            <Route path="/quotations" element={<Quotation />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
